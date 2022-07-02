@@ -16,9 +16,9 @@ jobs:
           toolchain: stable
           target: wasm32-unknown-unknown
       - uses: jetli/wasm-bindgen-action@v0.1.0
-      - run: make target/web/debug
+      - run: make PROFILE=release target/web/release
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./target/web/debug
+          publish_dir: ./target/web/release

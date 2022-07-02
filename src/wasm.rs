@@ -4,8 +4,6 @@ use crate::app::EmulatorApp;
 use eframe::wasm_bindgen;
 use eframe::wasm_bindgen::prelude::*;
 use eframe::wasm_bindgen::JsValue;
-use std::sync::Arc;
-use std::sync::Mutex;
 
 #[wasm_bindgen]
 pub fn start_app(canvas_id: &str) -> Result<(), JsValue> {
