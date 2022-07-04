@@ -2,11 +2,9 @@
 name = "chip8emu"
 default-run = "chip8emu_bin"
 version = "0.1.0"
-authors = ["Emil Ernerfeldt <emil.ernerfeldt@gmail.com>"]
+authors = ["Dennis Kempin <dennis.kempin@gmail.com>"]
 edition = "2021"
-rust-version = "1.60"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+rust-version = "1.62"
 
 [[bin]]
 name = "chip8emu_bin"
@@ -19,17 +17,16 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 egui = "0.18"
 eframe = "0.18"
-egui_extras = "0.18"
-getrandom = { version = "*", features = ["js"] }
-rand = { version = "0.8.5" }
-anyhow = "*"
-wasm-timer = "0.2.5"
+getrandom = { version = "0.2", features = ["js"] }
+rand = { version = "0.8" }
+anyhow = "1.0"
+wasm-timer = "0.2"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tracing-subscriber = "0.3"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-console_error_panic_hook = "0.1.6"
+console_error_panic_hook = "0.1"
 tracing-wasm = "0.2"
 
 [profile.release]
