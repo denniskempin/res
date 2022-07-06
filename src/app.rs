@@ -1,6 +1,9 @@
 use std::fs::File;
 use std::io::Read;
 
+use egui::FontFamily;
+use egui::Modifiers;
+use egui::RichText;
 use egui::vec2;
 use egui::Color32;
 use egui::DroppedFile;
@@ -15,6 +18,7 @@ use crate::chip8::Chip8;
 pub struct EmulatorApp {
     emulator: Chip8,
     pixels: [[u8; 64]; 32],
+    paused: bool,
 }
 
 impl EmulatorApp {
@@ -24,7 +28,78 @@ impl EmulatorApp {
         EmulatorApp {
             emulator: Chip8::with_program(include_bytes!("ibm_logo.ch8")),
             pixels: [[0u8; 64]; 32],
+            paused: false,
         }
+    }
+
+    pub fn render_registers(&self, ui: &mut egui::Ui) {
+        ui.label(RichText::new("CPU State"));
+        egui::Grid::new("register_debug")
+        .num_columns(5)
+        .spacing([4.0, 4.0])
+        .show(ui, |ui| {
+            let register = &self.emulator.register;
+            ui.label(RichText::new("0-3:").strong());
+            ui.label(format!("{:02x}", register[0x0]));
+            ui.label(format!("{:02x}", register[0x1]));
+            ui.label(format!("{:02x}", register[0x2]));
+            ui.label(format!("{:02x}", register[0x3]));
+            ui.end_row();
+            ui.label(RichText::new("4-7:").strong());
+            ui.label(format!("{:02x}", register[0x4]));
+            ui.label(format!("{:02x}", register[0x5]));
+            ui.label(format!("{:02x}", register[0x6]));
+            ui.label(format!("{:02x}", register[0x7]));
+            ui.end_row();
+            ui.label(RichText::new("8-B:").strong());
+            ui.label(format!("{:02x}", register[0x8]));
+            ui.label(format!("{:02x}", register[0x9]));
+            ui.label(format!("{:02x}", register[0xA]));
+            ui.label(format!("{:02x}", register[0xB]));
+            ui.end_row();
+            ui.label(RichText::new("C-F:").strong());
+            ui.label(format!("{:02x}", register[0xC]));
+            ui.label(format!("{:02x}", register[0xD]));
+            ui.label(format!("{:02x}", register[0xE]));
+            ui.label(format!("{:02x}", register[0xF]));
+            ui.end_row();
+            ui.label(RichText::new("IDX:").strong());
+            ui.label(format!("{:03x}", self.emulator.index));
+            ui.label(RichText::new("PC:").strong());
+            ui.label(format!("{:03x}", self.emulator.pc));
+            ui.end_row();
+            ui.label(RichText::new("Delay:").strong());
+            ui.label(format!("{:02x}", self.emulator.delay_timer.read()));
+            ui.label(RichText::new("Sound:").strong());
+            ui.label(format!("{:02x}", self.emulator.sound_timer.read()));
+            ui.end_row();
+            ui.label(RichText::new("Stack:").strong());
+            for addr in &self.emulator.stack {
+                ui.label(format!("0x{:03x}", addr));
+            }
+        });
+        ui.separator();
+    }
+
+    pub fn render_instructions(&self, ui: &mut egui::Ui) {
+        ui.label(RichText::new("Instructions").strong());
+        egui::Grid::new("instructions_debug")
+        .num_columns(1)
+        .striped(true)
+        .spacing([4.0, 4.0])
+        .show(ui, |ui| {
+            let start_idx = self.emulator.pc - 10;
+            let end_idx = start_idx + 30;
+
+            for i in (start_idx..end_idx).step_by(2) {
+                let mut instruction = RichText::new(format!("{:03x}: {}", i, self.emulator.instruction_at(i))).family(FontFamily::Monospace,);
+                if i == self.emulator.pc {
+                    instruction = instruction.strong();
+                }
+                ui.label(instruction);
+                ui.end_row()
+            }
+        });
     }
 
     pub fn render_display(&mut self, ui: &mut egui::Ui) {
@@ -46,7 +121,7 @@ impl EmulatorApp {
         }
 
         // Draw pixels as rects
-        let stroke = Stroke::new(0.5, Color32::from_gray(80));
+        let stroke = Stroke::new(0.5, Color32::from_gray(40));
         let pixel_width = whole_rect.width() / 64.0;
         let pixel_height = whole_rect.height() / 32.0;
         if ui.is_rect_visible(whole_rect) {
@@ -98,6 +173,11 @@ impl EmulatorApp {
 
 impl eframe::App for EmulatorApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if ctx.input_mut().consume_key(Modifiers::NONE, Key::P) {
+            self.paused = ! self.paused;
+        }
+        let step = ctx.input_mut().consume_key(Modifiers::NONE, Key::S);
+
         // Load new program if a file is dropped on the app
         if !ctx.input().raw.dropped_files.is_empty() {
             self.load_dropped_file(&ctx.input().raw.dropped_files[0]);
@@ -106,14 +186,31 @@ impl eframe::App for EmulatorApp {
 
         // egui is rendering at 60Hz, Chip8 runs at 500Hz, so we need to run
         // 8-ish cpu cycles for each frame.
-        for _ in 0..8 {
+        if ! self.paused {
+            for _ in 0..8 {
+                self.emulator.emulate_tick().unwrap();
+            }
+        } else if step || ctx.input().key_down(Key::C) {
             self.emulator.emulate_tick().unwrap();
         }
+
+
+        // Render debug display
+        egui::SidePanel::right("debug_panel").show(ctx, |ui| {
+            self.render_registers(ui);
+            self.render_instructions(ui);
+            ui.separator();
+            ui.label(RichText::new("Debug Keys:").strong());
+            ui.label("P: Pause");
+            ui.label("S: Step");
+            ui.label("C (hold): Continue");
+        });
 
         // Render emulator display
         egui::CentralPanel::default().show(ctx, |ui| {
             self.render_display(ui);
         });
+
 
         // Always repaint to keep rendering at 60Hz.
         ctx.request_repaint()

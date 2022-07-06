@@ -9,7 +9,7 @@ use wasm_timer::SystemTime;
 type Reg = usize; // u4 actually.
 type Addr = usize; // u12 actually.
 
-struct RawOp {
+pub struct RawOp {
     raw: u16,
 }
 
@@ -124,7 +124,7 @@ impl Chip8Timer {
         self.set_time = SystemTime::now();
     }
 
-    fn read(&self) -> u8 {
+    pub fn read(&self) -> u8 {
         let duration_since_set = SystemTime::now().duration_since(self.set_time).unwrap();
         let ticks_since_set = (duration_since_set.as_secs_f32() * 60.0)
             .clamp(0.0, 255.0)
@@ -194,14 +194,16 @@ impl Chip8 {
     }
 
     pub fn emulate_tick(&mut self) -> Result<State> {
-        let pc = self.pc;
         let op = self.fetch_op();
-        println!("{:03x}: {op}", pc);
         self.execute_op(op)
     }
 
+    pub fn instruction_at(&self, i: usize) -> RawOp {
+        RawOp::from_bytes(&[self.memory[i], self.memory[i + 1]])
+    }
+
     fn fetch_op(&mut self) -> RawOp {
-        let raw = RawOp::from_bytes(&[self.memory[self.pc], self.memory[self.pc + 1]]);
+        let raw = self.instruction_at(self.pc);
         self.pc += 2;
         raw
     }
