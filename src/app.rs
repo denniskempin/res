@@ -1,19 +1,146 @@
 use std::fs::File;
 use std::io::Read;
 
-use egui::FontFamily;
-use egui::Modifiers;
-use egui::RichText;
 use egui::vec2;
 use egui::Color32;
 use egui::DroppedFile;
+use egui::FontFamily;
 use egui::InputState;
 use egui::Key;
+use egui::Modifiers;
 use egui::Rect;
+use egui::RichText;
 use egui::Sense;
 use egui::Stroke;
 
 use crate::chip8::Chip8;
+
+pub struct Program {
+    name: &'static str,
+    data: &'static [u8],
+}
+
+
+macro_rules! embed_roms {
+    ( $( $x:expr ),* ) => {
+        &[
+            $(
+            Program {
+                name: $x,
+                data: include_bytes!(concat!("../chip8-roms/", $x)).as_slice(),
+            },
+            )*
+        ]
+    };
+}
+
+const PROGRAMS: &[Program] = embed_roms!(
+    "programs/Jumping X and O [Harry Kleinberg, 1977].ch8",
+    "programs/Keypad Test [Hap, 2006].ch8",
+    "programs/Framed MK1 [GV Samways, 1980].ch8",
+    "programs/Delay Timer Test [Matthew Mikolay, 2010].ch8",
+    "programs/Minimal game [Revival Studios, 2007].ch8",
+    "programs/IBM Logo.ch8",
+    "programs/BMP Viewer - Hello (C8 example) [Hap, 2005].ch8",
+    "programs/Framed MK2 [GV Samways, 1980].ch8",
+    "programs/Chip8 emulator Logo [Garstyciuks].ch8",
+    "programs/Random Number Test [Matthew Mikolay, 2010].ch8",
+    "programs/Chip8 Picture.ch8",
+    "programs/Division Test [Sergey Naydenov, 2010].ch8",
+    "programs/Clock Program [Bill Fisher, 1981].ch8",
+    "programs/Fishie [Hap, 2005].ch8",
+    "programs/Life [GV Samways, 1980].ch8",
+    "programs/SQRT Test [Sergey Naydenov, 2010].ch8"
+);
+
+const GAMES: &[Program] = embed_roms!(
+    "games/Timebomb.ch8",
+    "games/Paddles.ch8",
+    "games/Sum Fun [Joyce Weisbecker].ch8",
+    "games/Pong [Paul Vervalin, 1990].ch8",
+    "games/Syzygy [Roy Trevino, 1990].ch8",
+    "games/Soccer.ch8",
+    "games/Breakout (Brix hack) [David Winter, 1997].ch8",
+    "games/Breakout [Carmelo Cortez, 1979].ch8",
+    "games/Puzzle.ch8",
+    "games/Blinky [Hans Christian Egeberg, 1991].ch8",
+    "games/Lunar Lander (Udo Pernisz, 1979).ch8",
+    "games/Squash [David Winter].ch8",
+    "games/15 Puzzle [Roger Ivie] (alt).ch8",
+    "games/Addition Problems [Paul C. Moews].ch8",
+    "games/Rush Hour [Hap, 2006] (alt).ch8",
+    "games/Blitz [David Winter].ch8",
+    "games/Space Flight.ch8",
+    "games/Connect 4 [David Winter].ch8",
+    "games/Brix [Andreas Gustafsson, 1990].ch8",
+    "games/Tron.ch8",
+    "games/Bowling [Gooitzen van der Wal].ch8",
+    "games/Missile [David Winter].ch8",
+    "games/Pong 2 (Pong hack) [David Winter, 1997].ch8",
+    "games/Reversi [Philip Baltzer].ch8",
+    "games/Astro Dodge [Revival Studios, 2008].ch8",
+    "games/Russian Roulette [Carmelo Cortez, 1978].ch8",
+    "games/Vertical Brix [Paul Robson, 1996].ch8",
+    "games/Hi-Lo [Jef Winsor, 1978].ch8",
+    "games/Kaleidoscope [Joseph Weisbecker, 1978].ch8",
+    "games/Guess [David Winter].ch8",
+    "games/Pong (1 player).ch8",
+    "games/Rocket Launcher.ch8",
+    "games/Guess [David Winter] (alt).ch8",
+    "games/Programmable Spacefighters [Jef Winsor].ch8",
+    "games/Wipe Off [Joseph Weisbecker].ch8",
+    "games/Vers [JMN, 1991].ch8",
+    "games/Tapeworm [JDR, 1999].ch8",
+    "games/Nim [Carmelo Cortez, 1978].ch8",
+    "games/Tank.ch8",
+    "games/Worm V4 [RB-Revival Studios, 2007].ch8",
+    "games/Shooting Stars [Philip Baltzer, 1978].ch8",
+    "games/Brick (Brix hack, 1990).ch8",
+    "games/Wall [David Winter].ch8",
+    "games/Hidden [David Winter, 1996].ch8",
+    "games/Coin Flipping [Carmelo Cortez, 1978].ch8",
+    "games/Rocket Launch [Jonas Lindstedt].ch8",
+    "games/Figures.ch8",
+    "games/Biorhythm [Jef Winsor].ch8",
+    "games/Blinky [Hans Christian Egeberg] (alt).ch8",
+    "games/Tic-Tac-Toe [David Winter].ch8",
+    "games/Craps [Camerlo Cortez, 1978].ch8",
+    "games/Slide [Joyce Weisbecker].ch8",
+    "games/Animal Race [Brian Astle].ch8",
+    "games/Space Invaders [David Winter].ch8",
+    "games/Most Dangerous Game [Peter Maruhnic].ch8",
+    "games/Rush Hour [Hap, 2006].ch8",
+    "games/Filter.ch8",
+    "games/Mastermind FourRow (Robert Lindley, 1978).ch8",
+    "games/Tetris [Fran Dachille, 1991].ch8",
+    "games/Deflection [John Fort].ch8",
+    "games/Rocket [Joseph Weisbecker, 1978].ch8",
+    "games/Space Intercept [Joseph Weisbecker, 1978].ch8",
+    "games/UFO [Lutz V, 1992].ch8",
+    "games/ZeroPong [zeroZshadow, 2007].ch8",
+    "games/Spooky Spot [Joseph Weisbecker, 1978].ch8",
+    "games/Pong (alt).ch8",
+    "games/X-Mirror.ch8",
+    "games/15 Puzzle [Roger Ivie].ch8",
+    "games/Submarine [Carmelo Cortez, 1978].ch8",
+    "games/Landing.ch8",
+    "games/Airplane.ch8",
+    "games/Merlin [David Winter].ch8",
+    "games/Cave.ch8",
+    "games/Sequence Shoot [Joyce Weisbecker].ch8",
+    "games/Space Invaders [David Winter] (alt).ch8"
+);
+
+const DEMOS: &[Program] = embed_roms!(
+    "demos/Trip8 Demo (2008) [Revival Studios].ch8",
+    "demos/Stars [Sergey Naydenov, 2010].ch8",
+    "demos/Maze (alt) [David Winter, 199x].ch8",
+    "demos/Sierpinski [Sergey Naydenov, 2010].ch8",
+    "demos/Sirpinski [Sergey Naydenov, 2010].ch8",
+    "demos/Maze [David Winter, 199x].ch8",
+    "demos/Zero Demo [zeroZshadow, 2007].ch8",
+    "demos/Particle Demo [zeroZshadow, 2008].ch8"
+);
 
 pub struct EmulatorApp {
     emulator: Chip8,
@@ -35,71 +162,73 @@ impl EmulatorApp {
     pub fn render_registers(&self, ui: &mut egui::Ui) {
         ui.label(RichText::new("CPU State"));
         egui::Grid::new("register_debug")
-        .num_columns(5)
-        .spacing([4.0, 4.0])
-        .show(ui, |ui| {
-            let register = &self.emulator.register;
-            ui.label(RichText::new("0-3:").strong());
-            ui.label(format!("{:02x}", register[0x0]));
-            ui.label(format!("{:02x}", register[0x1]));
-            ui.label(format!("{:02x}", register[0x2]));
-            ui.label(format!("{:02x}", register[0x3]));
-            ui.end_row();
-            ui.label(RichText::new("4-7:").strong());
-            ui.label(format!("{:02x}", register[0x4]));
-            ui.label(format!("{:02x}", register[0x5]));
-            ui.label(format!("{:02x}", register[0x6]));
-            ui.label(format!("{:02x}", register[0x7]));
-            ui.end_row();
-            ui.label(RichText::new("8-B:").strong());
-            ui.label(format!("{:02x}", register[0x8]));
-            ui.label(format!("{:02x}", register[0x9]));
-            ui.label(format!("{:02x}", register[0xA]));
-            ui.label(format!("{:02x}", register[0xB]));
-            ui.end_row();
-            ui.label(RichText::new("C-F:").strong());
-            ui.label(format!("{:02x}", register[0xC]));
-            ui.label(format!("{:02x}", register[0xD]));
-            ui.label(format!("{:02x}", register[0xE]));
-            ui.label(format!("{:02x}", register[0xF]));
-            ui.end_row();
-            ui.label(RichText::new("IDX:").strong());
-            ui.label(format!("{:03x}", self.emulator.index));
-            ui.label(RichText::new("PC:").strong());
-            ui.label(format!("{:03x}", self.emulator.pc));
-            ui.end_row();
-            ui.label(RichText::new("Delay:").strong());
-            ui.label(format!("{:02x}", self.emulator.delay_timer.read()));
-            ui.label(RichText::new("Sound:").strong());
-            ui.label(format!("{:02x}", self.emulator.sound_timer.read()));
-            ui.end_row();
-            ui.label(RichText::new("Stack:").strong());
-            for addr in &self.emulator.stack {
-                ui.label(format!("0x{:03x}", addr));
-            }
-        });
+            .num_columns(5)
+            .spacing([4.0, 4.0])
+            .show(ui, |ui| {
+                let register = &self.emulator.register;
+                ui.label(RichText::new("0-3:").strong());
+                ui.label(format!("{:02x}", register[0x0]));
+                ui.label(format!("{:02x}", register[0x1]));
+                ui.label(format!("{:02x}", register[0x2]));
+                ui.label(format!("{:02x}", register[0x3]));
+                ui.end_row();
+                ui.label(RichText::new("4-7:").strong());
+                ui.label(format!("{:02x}", register[0x4]));
+                ui.label(format!("{:02x}", register[0x5]));
+                ui.label(format!("{:02x}", register[0x6]));
+                ui.label(format!("{:02x}", register[0x7]));
+                ui.end_row();
+                ui.label(RichText::new("8-B:").strong());
+                ui.label(format!("{:02x}", register[0x8]));
+                ui.label(format!("{:02x}", register[0x9]));
+                ui.label(format!("{:02x}", register[0xA]));
+                ui.label(format!("{:02x}", register[0xB]));
+                ui.end_row();
+                ui.label(RichText::new("C-F:").strong());
+                ui.label(format!("{:02x}", register[0xC]));
+                ui.label(format!("{:02x}", register[0xD]));
+                ui.label(format!("{:02x}", register[0xE]));
+                ui.label(format!("{:02x}", register[0xF]));
+                ui.end_row();
+                ui.label(RichText::new("IDX:").strong());
+                ui.label(format!("{:03x}", self.emulator.index));
+                ui.label(RichText::new("PC:").strong());
+                ui.label(format!("{:03x}", self.emulator.pc));
+                ui.end_row();
+                ui.label(RichText::new("Delay:").strong());
+                ui.label(format!("{:02x}", self.emulator.delay_timer.read()));
+                ui.label(RichText::new("Sound:").strong());
+                ui.label(format!("{:02x}", self.emulator.sound_timer.read()));
+                ui.end_row();
+                ui.label(RichText::new("Stack:").strong());
+                for addr in &self.emulator.stack {
+                    ui.label(format!("0x{:03x}", addr));
+                }
+            });
         ui.separator();
     }
 
     pub fn render_instructions(&self, ui: &mut egui::Ui) {
         ui.label(RichText::new("Instructions").strong());
         egui::Grid::new("instructions_debug")
-        .num_columns(1)
-        .striped(true)
-        .spacing([4.0, 4.0])
-        .show(ui, |ui| {
-            let start_idx = self.emulator.pc - 10;
-            let end_idx = start_idx + 30;
+            .num_columns(1)
+            .striped(true)
+            .spacing([4.0, 4.0])
+            .show(ui, |ui| {
+                let start_idx = self.emulator.pc - 10;
+                let end_idx = start_idx + 30;
 
-            for i in (start_idx..end_idx).step_by(2) {
-                let mut instruction = RichText::new(format!("{:03x}: {}", i, self.emulator.instruction_at(i))).family(FontFamily::Monospace,);
-                if i == self.emulator.pc {
-                    instruction = instruction.strong();
+                for i in (start_idx..end_idx).step_by(2) {
+                    let mut instruction =
+                        RichText::new(format!("{:03x}: {}", i, self.emulator.instruction_at(i)))
+                            .family(FontFamily::Monospace);
+                    if i == self.emulator.pc {
+                        instruction = instruction.strong();
+                    }
+                    ui.label(instruction);
+                    ui.end_row()
                 }
-                ui.label(instruction);
-                ui.end_row()
-            }
-        });
+            });
     }
 
     pub fn render_display(&mut self, ui: &mut egui::Ui) {
@@ -174,7 +303,7 @@ impl EmulatorApp {
 impl eframe::App for EmulatorApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if ctx.input_mut().consume_key(Modifiers::NONE, Key::P) {
-            self.paused = ! self.paused;
+            self.paused = !self.paused;
         }
         let step = ctx.input_mut().consume_key(Modifiers::NONE, Key::S);
 
@@ -186,7 +315,7 @@ impl eframe::App for EmulatorApp {
 
         // egui is rendering at 60Hz, Chip8 runs at 500Hz, so we need to run
         // 8-ish cpu cycles for each frame.
-        if ! self.paused {
+        if !self.paused {
             for _ in 0..8 {
                 self.emulator.emulate_tick().unwrap();
             }
@@ -194,23 +323,52 @@ impl eframe::App for EmulatorApp {
             self.emulator.emulate_tick().unwrap();
         }
 
+        egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.menu_button("Programs", |ui| {
+                    for program in PROGRAMS {
+                        if ui.button(program.name).clicked() {
+                            self.emulator = Chip8::with_program(program.data);
+                        }
+                    }
+                });
+                ui.menu_button("Games", |ui| {
+                    for program in GAMES {
+                        if ui.button(program.name).clicked() {
+                            self.emulator = Chip8::with_program(program.data);
+                        }
+                    }
+                });
+                ui.menu_button("Demos", |ui| {
+                    for program in DEMOS {
+                        if ui.button(program.name).clicked() {
+                            self.emulator = Chip8::with_program(program.data);
+                        }
+                    }
+                });
+                ui.label("(Or drop a .ch8 file to load it)")
+            });
+
+        });
 
         // Render debug display
-        egui::SidePanel::right("debug_panel").show(ctx, |ui| {
-            self.render_registers(ui);
-            self.render_instructions(ui);
-            ui.separator();
-            ui.label(RichText::new("Debug Keys:").strong());
-            ui.label("P: Pause");
-            ui.label("S: Step");
-            ui.label("C (hold): Continue");
-        });
+        egui::SidePanel::right("debug_panel")
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.separator();
+                self.render_registers(ui);
+                self.render_instructions(ui);
+                ui.separator();
+                ui.label(RichText::new("Debug Keys:").strong());
+                ui.label("P: Pause");
+                ui.label("S: Step");
+                ui.label("C (hold): Continue");
+            });
 
         // Render emulator display
         egui::CentralPanel::default().show(ctx, |ui| {
             self.render_display(ui);
         });
-
 
         // Always repaint to keep rendering at 60Hz.
         ctx.request_repaint()
