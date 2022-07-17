@@ -1,7 +1,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use chip8emu::app::EmulatorApp;
 use egui::vec2;
+use ners::app::EmulatorApp;
 
 fn main() {
     // Log to stdout (if you run with `RUST_LOG=debug`).
@@ -14,7 +14,7 @@ fn main() {
     };
 
     eframe::run_native(
-        "Chip8 Emulator",
+        "NES Emulator",
         native_options,
         Box::new(|cc| Box::new(EmulatorApp::new(cc))),
     );

@@ -1,9 +1,7 @@
-Little side project: Chip8 emulator
+WIP side project: NES emulator
 
-Supports basic instruction set to run most ROMs of https://github.com/kripod/chip8-roms
+Resources for development:
 
-Written in Rust, UI is handled via egui and eframe.
-
-Live at: https://denniskempin.github.io/chip8emu/
-
-Just drag and drop a ch8 file into the window to load it.
+- [NES CPU Basics](https://yizhang82.dev/nes-emu-cpu)
+- [Writing NES Emulator in Rust](https://bugzmanov.github.io/nes_ebook/)
+- [6502 Instruction Reference](https://www.masswerk.at/6502/6502_instruction_set.html)

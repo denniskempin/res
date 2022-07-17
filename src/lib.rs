@@ -1,3 +1,6 @@
 pub mod app;
-pub mod chip8;
+pub mod nes;
 mod wasm;
+
+#[macro_use]
+extern crate lazy_static;
