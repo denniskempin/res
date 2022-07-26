@@ -4,6 +4,7 @@ pub mod trace;
 
 use anyhow::Result;
 use std::fs;
+use std::path::Path;
 
 use self::bus::Bus;
 use self::bus::RomDevice;
@@ -60,12 +61,18 @@ impl System {
         system
     }
 
+    pub fn with_ines(path: &Path) -> Result<System> {
+        let mut system = System::default();
+        system.load_ines(path)?;
+        Ok(system)
+    }
+
     pub fn load_program(&mut self, program: &[u8]) {
         self.cpu.program_counter = RomDevice::START_ADDR;
         self.bus.rom.load_program(program);
     }
 
-    pub fn load_ines(&mut self, path: &str) -> Result<()> {
+    pub fn load_ines(&mut self, path: &Path) -> Result<()> {
         let ines_file = fs::read(path)?;
         self.bus.rom.load_ines(&ines_file)?;
         self.reset()

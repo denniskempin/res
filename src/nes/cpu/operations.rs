@@ -1,4 +1,3 @@
-
 use anyhow::Result;
 use std::fmt::Display;
 
@@ -86,31 +85,6 @@ pub enum Operand {
 }
 
 impl Operand {
-    pub fn addr(self, cpu: &Cpu) -> u16 {
-        match self {
-            Operand::Absolute(addr) => addr,
-            Operand::Relative(addr) => cpu.program_counter + addr as u16,
-            Operand::ZeroPage(addr) => addr as u16,
-            _ => unimplemented!(),
-        }
-    }
-
-    pub fn load(self, bus: &mut Bus) -> u8 {
-        match self {
-            Operand::Immediate(value) => value,
-            Operand::ZeroPage(addr) => bus.read_u8(addr),
-            _ => unimplemented!(),
-        }
-    }
-
-    pub fn write(self, bus: &mut Bus, value: u8) {
-        match self {
-            Operand::Absolute(addr) => bus.write_u8(addr, value),
-            Operand::ZeroPage(addr) => bus.write_u8(addr, value),
-            _ => unimplemented!(),
-        }
-    }
-
     pub fn raw(&self) -> Vec<u8> {
         match self {
             Operand::Absolute(value) => value.to_le_bytes().to_vec(),
@@ -152,28 +126,55 @@ lazy_static! {
     static ref OPCODE_TABLE: [OpCodeTableEntry; 0x100] = {
         use AddressMode::*;
         const OPCODE_LIST: &[OpCodeTableEntry] = &[
+            //
             opcode!(0x00, hlt, Implicit),
             opcode!(0x00, hlt, Implicit),
             opcode!(0x20, jsr, Absolute),
             opcode!(0x90, bcc, Relative),
+            opcode!(0xA0, ldy, Immediate),
             opcode!(0xB0, bcs, Relative),
             opcode!(0xF0, beq, Relative),
             opcode!(0xD0, bne, Relative),
+
+            //
             opcode!(0xA2, ldx, Immediate),
+
+            //
             opcode!(0xA4, ldy, ZeroPage),
+            opcode!(0x84, sty, ZeroPage),
+
+            //
             opcode!(0x65, adc, ZeroPage),
             opcode!(0x85, sta, ZeroPage),
+
+            //
             opcode!(0xE6, inc, ZeroPage),
             opcode!(0x86, stx, ZeroPage),
+
+            //
             opcode!(0x18, clc, Implicit),
             opcode!(0x78, sei, Implicit),
             opcode!(0x38, sec, Implicit),
             opcode!(0xC8, iny, Implicit),
+            opcode!(0xD8, cld, Implicit),
+            opcode!(0xE8, inx, Implicit),
+
+            //
             opcode!(0xA9, lda, Immediate),
+
+            //
+            opcode!(0x9A, txs, Implicit),
             opcode!(0xAA, tax, Implicit),
             opcode!(0xEA, nop, Implicit),
+
+            //
             opcode!(0x4C, jmp, Absolute),
+
+            //
             opcode!(0x8D, sta, Absolute),
+
+            //
+            opcode!(0x8E, stx, Absolute),
         ];
 
         // Turn list of codes into opcode lookup table
@@ -224,16 +225,30 @@ struct Context<'a> {
 }
 
 impl Context<'_> {
-    fn operand_addr(&self) -> u16 {
-        self.operand.addr(self.cpu)
+    pub fn operand_addr(&self) -> u16 {
+        match self.operand {
+            Operand::Absolute(addr) => addr,
+            Operand::Relative(addr) => self.cpu.program_counter + addr as u16,
+            Operand::ZeroPage(addr) => addr as u16,
+            _ => unimplemented!(),
+        }
     }
 
-    fn load_operand(&mut self) -> u8 {
-        self.operand.load(self.bus)
+    pub fn load_operand(&self) -> u8 {
+        match self.operand {
+            Operand::Immediate(value) => value,
+            Operand::ZeroPage(addr) => self.bus.read_u8(addr),
+            Operand::Relative(addr) => self.bus.read_u8(self.cpu.program_counter + addr as u16),
+            _ => unimplemented!(),
+        }
     }
 
-    fn write_operand(&mut self, value: u8) {
-        self.operand.write(self.bus, value)
+    pub fn write_operand(&mut self, value: u8) {
+        match self.operand {
+            Operand::Absolute(addr) => self.bus.write_u8(addr, value),
+            Operand::ZeroPage(addr) => self.bus.write_u8(addr, value),
+            _ => unimplemented!(),
+        }
     }
 }
 
@@ -257,6 +272,10 @@ fn stx(ctx: &mut Context) {
     ctx.write_operand(ctx.cpu.x);
 }
 
+fn sty(ctx: &mut Context) {
+    ctx.write_operand(ctx.cpu.y);
+}
+
 fn adc(ctx: &mut Context) {
     ctx.cpu.a += ctx.load_operand();
 }
@@ -264,6 +283,10 @@ fn adc(ctx: &mut Context) {
 fn inc(ctx: &mut Context) {
     let value = ctx.load_operand() + 1;
     ctx.write_operand(value);
+}
+
+fn inx(ctx: &mut Context) {
+    ctx.cpu.x = ctx.cpu.x.wrapping_add(1);
 }
 
 fn lda(ctx: &mut Context) {
@@ -300,6 +323,10 @@ fn clc(ctx: &mut Context) {
     ctx.cpu.status_flags.remove(StatusFlags::CARRY);
 }
 
+fn cld(ctx: &mut Context) {
+    ctx.cpu.status_flags.remove(StatusFlags::DECIMAL);
+}
+
 fn bcs(ctx: &mut Context) {
     if ctx.cpu.status_flags.contains(StatusFlags::CARRY) {
         ctx.cpu.program_counter = ctx.operand_addr();
@@ -322,6 +349,10 @@ fn bne(ctx: &mut Context) {
     if !ctx.cpu.status_flags.contains(StatusFlags::ZERO) {
         ctx.cpu.program_counter = ctx.operand_addr();
     }
+}
+
+fn txs(ctx: &mut Context) {
+    ctx.cpu.stack.push(ctx.cpu.x as u16);
 }
 
 fn sei(_ctx: &mut Context) {}
