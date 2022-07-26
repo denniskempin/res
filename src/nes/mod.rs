@@ -1,22 +1,54 @@
 pub mod bus;
 pub mod cpu;
+pub mod trace;
+
+use anyhow::Result;
+use std::fs;
 
 use self::bus::Bus;
 use self::bus::RomDevice;
 use self::cpu::Cpu;
-use anyhow::Ok;
-use anyhow::Result;
+use self::cpu::Operation;
+use self::trace::Trace;
 
 ////////////////////////////////////////////////////////////////////////////////
 // System
 
 #[derive(Default)]
 pub struct System {
-    bus: Bus,
-    cpu: Cpu,
+    pub bus: Bus,
+    pub cpu: Cpu,
+    pub clock: u64,
 }
 
 impl System {
+    pub fn tick(&mut self) -> Result<bool> {
+        self.clock += 1;
+        self.cpu.tick(self.clock, &mut self.bus)
+    }
+
+    pub fn trace(&self) -> Result<Trace> {
+        if let Ok(operation) = Operation::read(&self.bus, self.cpu.program_counter) {
+            Ok(Trace {
+                pc: self.cpu.program_counter,
+                opcode_raw: operation.raw(),
+                opcode_str: operation.format(&self.bus),
+                a: self.cpu.a,
+                x: self.cpu.x,
+                y: self.cpu.y,
+            })
+        } else {
+            Ok(Trace {
+                pc: self.cpu.program_counter,
+                opcode_raw: vec![self.bus.read_u8(self.cpu.program_counter)],
+                opcode_str: "N/A".to_string(),
+                a: self.cpu.a,
+                x: self.cpu.x,
+                y: self.cpu.y,
+            })
+        }
+    }
+
     pub fn execute_until_halt(&mut self) -> Result<()> {
         while self.cpu.execute_one(&mut self.bus)? {}
         Ok(())
@@ -29,35 +61,18 @@ impl System {
     }
 
     pub fn load_program(&mut self, program: &[u8]) {
-        self.bus.rom.load(program);
         self.cpu.program_counter = RomDevice::START_ADDR;
+        self.bus.rom.load_program(program);
     }
-}
 
-////////////////////////////////////////////////////////////////////////////////
-// test
+    pub fn load_ines(&mut self, path: &str) -> Result<()> {
+        let ines_file = fs::read(path)?;
+        self.bus.rom.load_ines(&ines_file)?;
+        self.reset()
+    }
 
-#[cfg(test)]
-mod test {
-    use super::System;
-
-    #[test]
-    pub fn test_basic_program() {
-        let mut system = System::with_program(&[
-            0xa9, 0x10, // LDA #$10     -> A = #$10
-            0x85, 0x20, // STA $20      -> $20 = #$10
-            0xa9, 0x01, // LDA #$1      -> A = #$1
-            0x65, 0x20, // ADC $20      -> A = #$11
-            0x85, 0x21, // STA $21      -> $21=#$11
-            0xe6, 0x21, // INC $21      -> $21=#$12
-            0xa4, 0x21, // LDY $21      -> Y=#$12
-            0xc8, // INY          -> Y=#$13
-            0x00, // BRK
-        ]);
-        system.execute_until_halt().unwrap();
-        assert_eq!(system.bus.read_u8(0x20_u16), 0x10);
-        assert_eq!(system.bus.read_u8(0x21_u16), 0x12);
-        assert_eq!(system.cpu.registers.a, 0x11);
-        assert_eq!(system.cpu.registers.y, 0x13);
+    pub fn reset(&mut self) -> Result<()> {
+        self.cpu.program_counter = self.bus.read_u16(0xFFFC_u16);
+        Ok(())
     }
 }

@@ -1,3 +1,6 @@
+use anyhow::anyhow;
+use anyhow::Result;
+
 ////////////////////////////////////////////////////////////////////////////////
 // Bus
 
@@ -8,7 +11,7 @@ pub struct Bus {
 }
 
 impl Bus {
-    pub fn read_u8(&mut self, addr: impl Into<u16>) -> u8 {
+    pub fn read_u8(&self, addr: impl Into<u16>) -> u8 {
         let addr: u16 = addr.into();
         match addr {
             RamDevice::START_ADDR..=RamDevice::END_ADDR => {
@@ -21,7 +24,8 @@ impl Bus {
         }
     }
 
-    pub fn read_u16(&mut self, addr: u16) -> u16 {
+    pub fn read_u16(&self, addr: impl Into<u16>) -> u16 {
+        let addr: u16 = addr.into();
         u16::from_le_bytes([self.read_u8(addr), self.read_u8(addr + 1)])
     }
 
@@ -36,6 +40,9 @@ impl Bus {
             }
             _ => (),
         };
+    }
+    pub fn write_u16(&mut self, _addr: impl Into<u16>, _value: u16) {
+        todo!("")
     }
 }
 
@@ -70,21 +77,57 @@ impl Default for RamDevice {
 
 #[derive(Default)]
 pub struct RomDevice {
-    rom: Vec<u8>,
+    prg: Vec<u8>,
+    chr: Vec<u8>,
 }
 
 impl RomDevice {
-    pub fn load(&mut self, data: &[u8]) {
-        self.rom = data.into();
+    pub fn load_program(&mut self, data: &[u8]) {
+        self.prg = data.into();
     }
+
+    pub fn load_ines(&mut self, raw: &[u8]) -> Result<()> {
+        println!("{:?}", &raw[0..16]);
+
+        if raw[0] != b'N' || raw[1] != b'E' || raw[2] != b'S' {
+            return Err(anyhow!("Expected NES header."));
+        }
+        let prg_len = raw[4] as usize * 16 * 1024;
+        let chr_len = raw[5] as usize * 8 * 1024;
+
+        let prg_start = 16;
+        let prg_end = prg_start + prg_len;
+        let chr_end = prg_end + chr_len;
+
+        if chr_end != raw.len() {
+            return Err(anyhow!(
+                "Expected rom size to be {}, but it is {}",
+                chr_end,
+                raw.len()
+            ));
+        }
+
+        self.prg = raw[prg_start..prg_end].to_vec();
+        self.chr = raw[prg_end..chr_end].to_vec();
+
+        Ok(())
+    }
+
     pub const START_ADDR: u16 = 0x8000;
     pub const END_ADDR: u16 = 0xFFFF;
 
     fn read(&self, addr: u16) -> u8 {
-        self.rom[addr as usize]
+        self.prg[(addr as usize) % self.prg.len()]
     }
 
     fn write(&mut self, _: u16, _: u8) {
         panic!("Illegal write to rom device.");
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// INES File
+
+pub struct InesFile {}
+
+impl InesFile {}
