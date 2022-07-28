@@ -32,11 +32,15 @@ impl System {
         if let Ok(operation) = Operation::read(&self.bus, self.cpu.program_counter) {
             Ok(Trace {
                 pc: self.cpu.program_counter,
-                opcode_raw: operation.raw(),
-                opcode_str: operation.format(&self.bus),
+                opcode_raw: self
+                    .bus
+                    .slice(self.cpu.program_counter, operation.size())
+                    .to_vec(),
+                opcode_str: operation.format(&self.cpu, &self.bus),
                 a: self.cpu.a,
                 x: self.cpu.x,
                 y: self.cpu.y,
+                p: self.cpu.status_flags.bits(),
             })
         } else {
             Ok(Trace {
@@ -46,6 +50,7 @@ impl System {
                 a: self.cpu.a,
                 x: self.cpu.x,
                 y: self.cpu.y,
+                p: self.cpu.status_flags.bits(),
             })
         }
     }

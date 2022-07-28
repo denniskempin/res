@@ -11,38 +11,40 @@ pub struct Bus {
 }
 
 impl Bus {
-    pub fn read_u8(&self, addr: impl Into<u16>) -> u8 {
-        let addr: u16 = addr.into();
+    pub fn slice(&self, addr: u16, length: usize) -> &[u8] {
         match addr {
             RamDevice::START_ADDR..=RamDevice::END_ADDR => {
-                self.ram.read(addr - RamDevice::START_ADDR)
+                self.ram.slice(addr - RamDevice::START_ADDR, length)
             }
             RomDevice::START_ADDR..=RomDevice::END_ADDR => {
-                self.rom.read(addr - RomDevice::START_ADDR)
+                self.rom.slice(addr - RomDevice::START_ADDR, length)
             }
-            _ => 0,
+            _ => unimplemented!("Invalid read from {addr}"),
         }
     }
 
-    pub fn read_u16(&self, addr: impl Into<u16>) -> u16 {
-        let addr: u16 = addr.into();
-        u16::from_le_bytes([self.read_u8(addr), self.read_u8(addr + 1)])
-    }
-
-    pub fn write_u8(&mut self, addr: impl Into<u16>, value: u8) {
-        let addr: u16 = addr.into();
+    pub fn mut_slice(&mut self, addr: u16, length: usize) -> &mut [u8] {
         match addr {
             RamDevice::START_ADDR..=RamDevice::END_ADDR => {
-                self.ram.write(addr - RamDevice::START_ADDR, value)
+                self.ram.mut_slice(addr - RamDevice::START_ADDR, length)
             }
             RomDevice::START_ADDR..=RomDevice::END_ADDR => {
-                self.rom.write(addr - RomDevice::START_ADDR, value)
+                self.rom.mut_slice(addr - RomDevice::START_ADDR, length)
             }
-            _ => (),
-        };
+            _ => unimplemented!("Invalid write to {addr}"),
+        }
     }
-    pub fn write_u16(&mut self, _addr: impl Into<u16>, _value: u16) {
-        todo!("")
+
+    pub fn read_u8(&self, addr: u16) -> u8 {
+        return self.slice(addr, 1)[0];
+    }
+
+    pub fn read_u16(&self, addr: u16) -> u16 {
+        u16::from_le_bytes(self.slice(addr, 2).try_into().unwrap())
+    }
+
+    pub fn write_u8(&mut self, addr: u16, value: u8) {
+        self.mut_slice(addr, 1)[0] = value;
     }
 }
 
@@ -55,14 +57,16 @@ pub struct RamDevice {
 
 impl RamDevice {
     pub const START_ADDR: u16 = 0x0000;
-    pub const END_ADDR: u16 = 0x1FFF;
+    pub const END_ADDR: u16 = 0x3FFF;
 
-    fn read(&self, addr: u16) -> u8 {
-        self.ram[addr as usize & 0b0000_0111_1111_1111]
+    pub fn slice(&self, addr: u16, length: usize) -> &[u8] {
+        let addr = addr as usize & 0b0000_0111_1111_1111;
+        &self.ram[addr..(addr + length)]
     }
 
-    fn write(&mut self, addr: u16, value: u8) {
-        self.ram[addr as usize & 0b0000_0111_1111_1111] = value
+    pub fn mut_slice(&mut self, addr: u16, length: usize) -> &mut [u8] {
+        let addr = addr as usize & 0b0000_0111_1111_1111;
+        &mut self.ram[addr..(addr + length)]
     }
 }
 
@@ -116,18 +120,25 @@ impl RomDevice {
     pub const START_ADDR: u16 = 0x8000;
     pub const END_ADDR: u16 = 0xFFFF;
 
-    fn read(&self, addr: u16) -> u8 {
-        self.prg[(addr as usize) % self.prg.len()]
+    pub fn slice(&self, addr: u16, length: usize) -> &[u8] {
+        let addr = addr as usize % self.prg.len();
+        &self.prg[addr..(addr + length)]
     }
 
-    fn write(&mut self, _: u16, _: u8) {
+    pub fn mut_slice(&mut self, _: u16, _: usize) -> &mut [u8] {
         panic!("Illegal write to rom device.");
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// INES File
+// Utilities
 
-pub struct InesFile {}
+trait SliceWithLength {
+    fn slice(&self, index: usize, length: usize) -> Self;
+}
 
-impl InesFile {}
+impl SliceWithLength for &[u8] {
+    fn slice(&self, index: usize, length: usize) -> Self {
+        &self[index..(index + length)]
+    }
+}

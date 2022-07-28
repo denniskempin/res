@@ -1,5 +1,6 @@
 use anyhow::Result;
-use std::fmt::Display;
+
+use std::marker::PhantomData;
 
 use super::Cpu;
 use super::StatusFlags;
@@ -9,102 +10,27 @@ use crate::nes::bus::Bus;
 // Operation
 
 pub struct Operation {
-    pub size: u16,
-    opcode: OpCodeTableEntry,
-    raw_opcode: u8,
-    operand: Operand,
+    addr: u16,
+    table_entry: OpCodeTableEntry,
 }
 
 impl Operation {
+    pub fn size(&self) -> usize {
+        self.table_entry.operand_size + 1
+    }
+
     pub fn read(bus: &Bus, addr: u16) -> Result<Operation> {
         let raw_opcode = bus.read_u8(addr);
-        let opcode = OPCODE_TABLE[raw_opcode as usize];
-        let (operand, size) = match opcode.address_mode {
-            AddressMode::Absolute => (Operand::Absolute(bus.read_u16(addr + 1)), 2_u16),
-            AddressMode::Relative => (Operand::Relative(bus.read_u8(addr + 1)), 1_u16),
-            AddressMode::Implicit => (Operand::Implicit, 0_u16),
-            AddressMode::Immediate => (Operand::Immediate(bus.read_u8(addr + 1)), 1_u16),
-            AddressMode::ZeroPage => (Operand::ZeroPage(bus.read_u8(addr + 1)), 1_u16),
-        };
-        Ok(Operation {
-            opcode,
-            raw_opcode,
-            operand,
-            size: size + 1,
-        })
+        let table_entry = OPCODE_TABLE[raw_opcode as usize];
+        Ok(Operation { addr, table_entry })
     }
 
     pub fn execute(&self, cpu: &mut Cpu, bus: &mut Bus) {
-        let mut ctx = Context {
-            opcode: &self.opcode,
-            bus,
-            cpu,
-            operand: self.operand,
-        };
-        (self.opcode.execute)(&mut ctx);
+        (self.table_entry.execute_fn)(cpu, bus, self.addr);
     }
 
-    pub fn raw(&self) -> Vec<u8> {
-        let mut raw = vec![self.raw_opcode];
-        raw.append(&mut self.operand.raw());
-        raw
-    }
-
-    pub fn format(self, _bus: &Bus) -> String {
-        let mnemonic = self.opcode.mnemonic.to_uppercase();
-        let operand_str = format!("{}", self.operand);
-        if operand_str.is_empty() {
-            self.opcode.mnemonic.to_uppercase()
-        } else {
-            format!("{mnemonic} {operand_str}")
-        }
-    }
-}
-
-impl Display for Operation {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(
-            f,
-            "{} {}",
-            self.opcode.mnemonic.to_uppercase(),
-            self.operand
-        )
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// Operand
-
-#[derive(Copy, Clone)]
-pub enum Operand {
-    Absolute(u16),
-    Relative(u8),
-    Implicit,
-    Immediate(u8),
-    ZeroPage(u8),
-}
-
-impl Operand {
-    pub fn raw(&self) -> Vec<u8> {
-        match self {
-            Operand::Absolute(value) => value.to_le_bytes().to_vec(),
-            Operand::Relative(value) => vec![*value],
-            Operand::Implicit => vec![],
-            Operand::Immediate(value) => vec![*value],
-            Operand::ZeroPage(value) => vec![*value],
-        }
-    }
-}
-
-impl Display for Operand {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Operand::Absolute(value) => write!(f, "${:04X}", value),
-            Operand::Relative(value) => write!(f, "d{:02X}", value),
-            Operand::Implicit => Ok(()),
-            Operand::Immediate(value) => write!(f, "#${:02X}", value),
-            Operand::ZeroPage(value) => write!(f, "${:02X}", value),
-        }
+    pub fn format(self, cpu: &Cpu, bus: &Bus) -> String {
+        (self.table_entry.format_fn)(cpu, bus, self.addr)
     }
 }
 
@@ -115,16 +41,28 @@ macro_rules! opcode {
     ($code: literal, $method: ident, $address_mode: ident) => {
         OpCodeTableEntry {
             code: $code,
-            address_mode: $address_mode,
-            execute: $method,
-            mnemonic: stringify!($method),
+            operand_size: $address_mode::OPERAND_SIZE,
+            execute_fn: |cpu, bus, addr| {
+                $method(&mut Context::<$address_mode> {
+                    cpu,
+                    bus,
+                    addr,
+                    phantom: PhantomData,
+                })
+            },
+            format_fn: |cpu, bus, addr| {
+                format!(
+                    "{}{}",
+                    stringify!($method).to_uppercase(),
+                    $address_mode::format(cpu, bus, addr)
+                )
+            },
         }
     };
 }
 
 lazy_static! {
     static ref OPCODE_TABLE: [OpCodeTableEntry; 0x100] = {
-        use AddressMode::*;
         const OPCODE_LIST: &[OpCodeTableEntry] = &[
             //
             opcode!(0x00, hlt, Implicit),
@@ -136,6 +74,8 @@ lazy_static! {
             opcode!(0xF0, beq, Relative),
             opcode!(0xD0, bne, Relative),
 
+            //
+            opcode!(0x91, sta, IndirectY),
             //
             opcode!(0xA2, ldx, Immediate),
 
@@ -189,176 +129,253 @@ lazy_static! {
 #[derive(Copy, Clone)]
 struct OpCodeTableEntry {
     pub code: u8,
-    pub address_mode: AddressMode,
-    pub execute: fn(&mut Context),
-    pub mnemonic: &'static str,
+    pub operand_size: usize,
+    pub execute_fn: fn(cpu: &mut Cpu, bus: &mut Bus, addr: u16),
+    pub format_fn: fn(cpu: &Cpu, bus: &Bus, addr: u16) -> String,
 }
 
 impl Default for OpCodeTableEntry {
     fn default() -> Self {
         Self {
             code: Default::default(),
-            address_mode: AddressMode::Implicit,
-            execute: not_implemented,
-            mnemonic: "N/A",
+            operand_size: 0,
+            execute_fn: |_, _, _| unimplemented!(),
+            format_fn: |_, _, _| "N/A".to_string(),
         }
     }
-}
-
-#[derive(Copy, Clone, PartialEq, Eq)]
-enum AddressMode {
-    Absolute,
-    Relative,
-    Implicit,
-    Immediate,
-    ZeroPage,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// OpContext
+// Context
 
-struct Context<'a> {
-    opcode: &'a OpCodeTableEntry,
+/// Context for executing an operation. Allows the operation to load and store
+/// operands regardless of their address mode.
+/// Makes use of monomorphization to build execute_fn's that are optimiezd at
+/// compile time for their address mode and do not require additional branches
+/// or lookups of which mode to use.
+struct Context<'a, AM: AddressModeImpl> {
     cpu: &'a mut Cpu,
     bus: &'a mut Bus,
-    operand: Operand,
+    addr: u16,
+    phantom: PhantomData<AM>,
 }
 
-impl Context<'_> {
+impl<AM: AddressModeImpl> Context<'_, AM> {
     pub fn operand_addr(&self) -> u16 {
-        match self.operand {
-            Operand::Absolute(addr) => addr,
-            Operand::Relative(addr) => self.cpu.program_counter + addr as u16,
-            Operand::ZeroPage(addr) => addr as u16,
-            _ => unimplemented!(),
-        }
+        AM::addr(self.cpu, self.bus, self.addr)
     }
 
     pub fn load_operand(&self) -> u8 {
-        match self.operand {
-            Operand::Immediate(value) => value,
-            Operand::ZeroPage(addr) => self.bus.read_u8(addr),
-            Operand::Relative(addr) => self.bus.read_u8(self.cpu.program_counter + addr as u16),
-            _ => unimplemented!(),
-        }
+        AM::load(self.cpu, self.bus, self.addr)
     }
 
-    pub fn write_operand(&mut self, value: u8) {
-        match self.operand {
-            Operand::Absolute(addr) => self.bus.write_u8(addr, value),
-            Operand::ZeroPage(addr) => self.bus.write_u8(addr, value),
-            _ => unimplemented!(),
-        }
+    pub fn store_operand(&mut self, value: u8) {
+        AM::store(self.cpu, self.bus, self.addr, value)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Address Modes
+
+struct Immediate {}
+impl AddressModeImpl for Immediate {
+    const OPERAND_SIZE: usize = 1;
+
+    fn addr(_cpu: &Cpu, _bus: &Bus, _addr: u16) -> u16 {
+        unimplemented!();
+    }
+
+    fn load(_cpu: &Cpu, bus: &Bus, addr: u16) -> u8 {
+        bus.read_u8(addr + 1)
+    }
+
+    fn store(_cpu: &Cpu, _bus: &mut Bus, _addr: u16, _value: u8) {
+        unimplemented!();
+    }
+
+    fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
+        return format!(" #${:02X}", Self::load(cpu, bus, addr));
+    }
+}
+
+struct Implicit {}
+impl AddressModeImpl for Implicit {
+    const OPERAND_SIZE: usize = 0;
+
+    fn addr(_cpu: &Cpu, _bus: &Bus, _addr: u16) -> u16 {
+        unimplemented!();
+    }
+
+    fn load(_cpu: &Cpu, _bus: &Bus, _addr: u16) -> u8 {
+        unimplemented!();
+    }
+
+    fn store(_cpu: &Cpu, _bus: &mut Bus, _addr: u16, _value: u8) {
+        unimplemented!();
+    }
+
+    fn format(_cpu: &Cpu, _bus: &Bus, _addr: u16) -> String {
+        "".to_string()
+    }
+}
+
+struct Absolute {}
+impl AddressModeImpl for Absolute {
+    const OPERAND_SIZE: usize = 2;
+
+    fn addr(_cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
+        bus.read_u16(addr + 1)
+    }
+}
+
+struct ZeroPage {}
+impl AddressModeImpl for ZeroPage {
+    const OPERAND_SIZE: usize = 1;
+
+    fn addr(_cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
+        bus.read_u8(addr + 1) as u16
+    }
+}
+
+struct Relative {}
+impl AddressModeImpl for Relative {
+    const OPERAND_SIZE: usize = 1;
+
+    fn addr(_cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
+        addr + 1 + Self::OPERAND_SIZE as u16 + bus.read_u8(addr + 1) as u16
+    }
+}
+
+struct IndirectY {}
+impl AddressModeImpl for IndirectY {
+    const OPERAND_SIZE: usize = 1;
+
+    fn addr(cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
+        bus.read_u16(bus.read_u8(addr + 1) as u16) as u16 + cpu.y as u16
+    }
+}
+
+trait AddressModeImpl {
+    const OPERAND_SIZE: usize = 0;
+
+    fn addr(cpu: &Cpu, bus: &Bus, addr: u16) -> u16;
+
+    fn load(cpu: &Cpu, bus: &Bus, addr: u16) -> u8 {
+        bus.read_u8(Self::addr(cpu, bus, addr))
+    }
+
+    fn store(cpu: &Cpu, bus: &mut Bus, addr: u16, value: u8) {
+        bus.write_u8(Self::addr(cpu, bus, addr), value)
+    }
+
+    fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
+        return format!(" ${:04X}", Self::addr(cpu, bus, addr));
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // Operation Implementations
 
-fn jmp(ctx: &mut Context) {
+fn jmp<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     ctx.cpu.program_counter = ctx.operand_addr();
 }
 
-fn jsr(ctx: &mut Context) {
+fn jsr<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     ctx.cpu.stack.push(ctx.cpu.program_counter);
     ctx.cpu.program_counter = ctx.operand_addr();
 }
 
-fn sta(ctx: &mut Context) {
-    ctx.write_operand(ctx.cpu.a);
+fn sta<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    ctx.store_operand(ctx.cpu.a);
 }
 
-fn stx(ctx: &mut Context) {
-    ctx.write_operand(ctx.cpu.x);
+fn stx<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    ctx.store_operand(ctx.cpu.x);
 }
 
-fn sty(ctx: &mut Context) {
-    ctx.write_operand(ctx.cpu.y);
+fn sty<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    ctx.store_operand(ctx.cpu.y);
 }
 
-fn adc(ctx: &mut Context) {
+fn adc<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     ctx.cpu.a += ctx.load_operand();
 }
 
-fn inc(ctx: &mut Context) {
+fn inc<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     let value = ctx.load_operand() + 1;
-    ctx.write_operand(value);
+    ctx.store_operand(value);
 }
 
-fn inx(ctx: &mut Context) {
+fn inx<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     ctx.cpu.x = ctx.cpu.x.wrapping_add(1);
 }
 
-fn lda(ctx: &mut Context) {
+fn lda<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     ctx.cpu.a = ctx.load_operand();
     ctx.cpu.update_status_flags(ctx.cpu.a);
 }
 
-fn tax(ctx: &mut Context) {
+fn tax<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     ctx.cpu.x = ctx.cpu.a;
     ctx.cpu.update_status_flags(ctx.cpu.x);
 }
 
-fn ldy(ctx: &mut Context) {
+fn ldy<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     ctx.cpu.y = ctx.load_operand();
 }
 
-fn ldx(ctx: &mut Context) {
+fn ldx<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     ctx.cpu.x = ctx.load_operand();
 }
 
-fn iny(ctx: &mut Context) {
+fn iny<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     ctx.cpu.y += 1;
 }
 
-fn hlt(ctx: &mut Context) {
+fn hlt<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     ctx.cpu.halt = true;
 }
 
-fn sec(ctx: &mut Context) {
+fn sec<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     ctx.cpu.status_flags.insert(StatusFlags::CARRY);
 }
 
-fn clc(ctx: &mut Context) {
+fn clc<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     ctx.cpu.status_flags.remove(StatusFlags::CARRY);
 }
 
-fn cld(ctx: &mut Context) {
+fn cld<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     ctx.cpu.status_flags.remove(StatusFlags::DECIMAL);
 }
 
-fn bcs(ctx: &mut Context) {
+fn bcs<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     if ctx.cpu.status_flags.contains(StatusFlags::CARRY) {
         ctx.cpu.program_counter = ctx.operand_addr();
     }
 }
 
-fn bcc(ctx: &mut Context) {
+fn bcc<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     if !ctx.cpu.status_flags.contains(StatusFlags::CARRY) {
         ctx.cpu.program_counter = ctx.operand_addr();
     }
 }
 
-fn beq(ctx: &mut Context) {
+fn beq<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     if ctx.cpu.status_flags.contains(StatusFlags::ZERO) {
         ctx.cpu.program_counter = ctx.operand_addr();
     }
 }
 
-fn bne(ctx: &mut Context) {
+fn bne<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     if !ctx.cpu.status_flags.contains(StatusFlags::ZERO) {
         ctx.cpu.program_counter = ctx.operand_addr();
     }
 }
 
-fn txs(ctx: &mut Context) {
+fn txs<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     ctx.cpu.stack.push(ctx.cpu.x as u16);
 }
 
-fn sei(_ctx: &mut Context) {}
+fn sei<AM: AddressModeImpl>(_ctx: &mut Context<AM>) {}
 
-fn nop(_ctx: &mut Context) {}
-
-fn not_implemented(ctx: &mut Context) {
-    unimplemented!("Opcode {} is not implemented", ctx.opcode.code);
-}
+fn nop<AM: AddressModeImpl>(_ctx: &mut Context<AM>) {}

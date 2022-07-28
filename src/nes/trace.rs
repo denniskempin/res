@@ -12,6 +12,7 @@ pub struct Trace {
     pub a: u8,
     pub x: u8,
     pub y: u8,
+    pub p: u8,
 }
 
 impl PartialEq for Trace {
@@ -24,7 +25,7 @@ impl PartialEq for Trace {
     }
 }
 
-static TRACE_REGEX: &str = "(.{4})  (.{8})  (.{30})  A:(.{2}) X:(.{2}) Y:(.{2})";
+static TRACE_REGEX: &str = "(.{4})  (.{8})  (.{30})  A:(.{2}) X:(.{2}) Y:(.{2}) P:(.{2})";
 
 impl Display for Trace {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -37,8 +38,8 @@ impl Display for Trace {
 
         write!(
             f,
-            "{:04X}  {:<8}  {:<30}  A:{:02X} X:{:02X} Y:{:02X}",
-            self.pc, opcode_raw_str, self.opcode_str, self.a, self.x, self.y,
+            "{:04X}  {:<8}  {:<30}  A:{:02X} X:{:02X} Y:{:02X} P:{:02X}",
+            self.pc, opcode_raw_str, self.opcode_str, self.a, self.x, self.y, self.p,
         )
     }
 }
@@ -62,6 +63,7 @@ impl Trace {
             a: u8::from_str_radix(&captures[4], 16)?,
             x: u8::from_str_radix(&captures[5], 16)?,
             y: u8::from_str_radix(&captures[6], 16)?,
+            p: u8::from_str_radix(&captures[7], 16)?,
         })
     }
 }
@@ -74,7 +76,7 @@ mod test {
     pub fn test_parse_fmt_trace() {
         let trace_str = concat!(
             "C000  4C F5 C5  JMP $C5F5                       ",
-            "A:00 X:00 Y:00"
+            "A:00 X:00 Y:00 P:24"
         );
         let trace = Trace {
             pc: 0xC000,
@@ -83,6 +85,7 @@ mod test {
             a: 0,
             x: 0,
             y: 0,
+            p: 0x24,
         };
         assert_eq!(trace_str, format!("{trace}"));
         assert_eq!(trace, Trace::from_log_line(trace_str).unwrap());

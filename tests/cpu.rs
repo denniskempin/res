@@ -29,7 +29,7 @@ pub fn test_basic_program() {
 #[test]
 pub fn test_01_basic() {
     let system = System::with_ines(Path::new("tests/cpu/01-basics.nes")).unwrap();
-    compare_to_log(system, "tests/cpu/01-basics.log", 22);
+    compare_to_log(system, "tests/cpu/01-basics.log", 25);
 }
 
 #[test]
@@ -51,6 +51,7 @@ pub fn compare_to_log(mut system: System, log_file: &str, goal_count: usize) {
         let expected_trace = Trace::from_log_line(&line.unwrap()).unwrap();
         println!("{i:6}: {expected_trace}");
         let actual_trace = system.trace().unwrap();
+        println!("{i:6}: {actual_trace}");
         assert_eq!(expected_trace, actual_trace);
         system.tick().unwrap();
     }

@@ -26,7 +26,6 @@ bitflags! {
 ////////////////////////////////////////////////////////////////////////////////
 // Cpu
 
-#[derive(Default)]
 pub struct Cpu {
     pub a: u8,
     pub x: u8,
@@ -35,6 +34,20 @@ pub struct Cpu {
     pub program_counter: u16,
     pub halt: bool,
     pub stack: Vec<u16>,
+}
+
+impl Default for Cpu {
+    fn default() -> Self {
+        Self {
+            a: 0,
+            x: 0,
+            y: 0,
+            status_flags: StatusFlags::from_bits_truncate(0x24),
+            program_counter: 0,
+            halt: false,
+            stack: Vec::new(),
+        }
+    }
 }
 
 impl Cpu {
@@ -56,7 +69,7 @@ impl Cpu {
 
     fn next_operation(&mut self, bus: &mut Bus) -> Result<Operation> {
         let operation = Operation::read(bus, self.program_counter)?;
-        self.program_counter += operation.size;
+        self.program_counter += operation.size() as u16;
         Ok(operation)
     }
 }
