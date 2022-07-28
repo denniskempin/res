@@ -194,7 +194,7 @@ impl AddressModeImpl for Immediate {
     }
 
     fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
-        return format!(" #${:02X}", Self::load(cpu, bus, addr));
+        return format!(" #{:02X}", Self::load(cpu, bus, addr));
     }
 }
 
@@ -226,6 +226,14 @@ impl AddressModeImpl for Absolute {
     fn addr(_cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
         bus.read_u16(addr + 1)
     }
+
+    fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
+        return format!(
+            " {:04X} @ {:02X}",
+            Self::addr(cpu, bus, addr),
+            Self::load(cpu, bus, addr)
+        );
+    }
 }
 
 struct ZeroPage {}
@@ -234,6 +242,14 @@ impl AddressModeImpl for ZeroPage {
 
     fn addr(_cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
         bus.read_u8(addr + 1) as u16
+    }
+
+    fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
+        return format!(
+            " {:02X} @ {:02X}",
+            Self::addr(cpu, bus, addr),
+            Self::load(cpu, bus, addr)
+        );
     }
 }
 
@@ -244,6 +260,16 @@ impl AddressModeImpl for Relative {
     fn addr(_cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
         addr + 1 + Self::OPERAND_SIZE as u16 + bus.read_u8(addr + 1) as u16
     }
+
+    fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
+        let relative_addr = bus.read_u8(addr + 1);
+        return format!(
+            " {:+02X} ={:04X} @ {:02X}",
+            relative_addr,
+            Self::addr(cpu, bus, addr),
+            Self::load(cpu, bus, addr)
+        );
+    }
 }
 
 struct IndirectY {}
@@ -253,12 +279,25 @@ impl AddressModeImpl for IndirectY {
     fn addr(cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
         bus.read_u16(bus.read_u8(addr + 1) as u16) as u16 + cpu.y as u16
     }
+
+    fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
+        let indirect_addr = bus.read_u8(addr + 1);
+        let indirect = bus.read_u16(indirect_addr as u16);
+        return format!(
+            " (${:02X})={:04X}+Y ={:04X} @ {:02X}",
+            indirect_addr,
+            indirect,
+            Self::addr(cpu, bus, addr),
+            Self::load(cpu, bus, addr)
+        );
+    }
 }
 
 trait AddressModeImpl {
     const OPERAND_SIZE: usize = 0;
 
     fn addr(cpu: &Cpu, bus: &Bus, addr: u16) -> u16;
+    fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String;
 
     fn load(cpu: &Cpu, bus: &Bus, addr: u16) -> u8 {
         bus.read_u8(Self::addr(cpu, bus, addr))
@@ -266,10 +305,6 @@ trait AddressModeImpl {
 
     fn store(cpu: &Cpu, bus: &mut Bus, addr: u16, value: u8) {
         bus.write_u8(Self::addr(cpu, bus, addr), value)
-    }
-
-    fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
-        return format!(" ${:04X}", Self::addr(cpu, bus, addr));
     }
 }
 
