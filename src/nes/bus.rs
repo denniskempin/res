@@ -57,7 +57,7 @@ pub struct RamDevice {
 
 impl RamDevice {
     pub const START_ADDR: u16 = 0x0000;
-    pub const END_ADDR: u16 = 0x3FFF;
+    pub const END_ADDR: u16 = 0x1FFF;
 
     pub fn slice(&self, addr: u16, length: usize) -> &[u8] {
         let addr = addr as usize & 0b0000_0111_1111_1111;

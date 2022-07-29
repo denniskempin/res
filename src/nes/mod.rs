@@ -40,7 +40,7 @@ impl System {
                 a: self.cpu.a,
                 x: self.cpu.x,
                 y: self.cpu.y,
-                p: self.cpu.status_flags.bits(),
+                p: self.cpu.status_flags,
                 sp: self.cpu.sp,
             })
         } else {
@@ -51,7 +51,7 @@ impl System {
                 a: self.cpu.a,
                 x: self.cpu.x,
                 y: self.cpu.y,
-                p: self.cpu.status_flags.bits(),
+                p: self.cpu.status_flags,
                 sp: self.cpu.sp,
             })
         }

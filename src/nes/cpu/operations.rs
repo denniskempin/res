@@ -67,7 +67,9 @@ lazy_static! {
             //
             opcode!(0x00, hlt, Implicit),
             opcode!(0x00, hlt, Implicit),
+            opcode!(0x10, bpl, Relative),
             opcode!(0x20, jsr, Absolute),
+            opcode!(0x30, bmi, Relative),
             opcode!(0x60, rts, Implicit),
             opcode!(0x90, bcc, Relative),
             opcode!(0xA0, ldy, Immediate),
@@ -81,6 +83,7 @@ lazy_static! {
             opcode!(0xA2, ldx, Immediate),
 
             //
+            opcode!(0x24, bit, ZeroPage),
             opcode!(0xA4, ldy, ZeroPage),
             opcode!(0x84, sty, ZeroPage),
 
@@ -114,6 +117,7 @@ lazy_static! {
 
             //
             opcode!(0x4C, jmp, Absolute),
+            opcode!(0x2C, bit, Absolute),
 
             //
             opcode!(0x8D, sta, Absolute),
@@ -527,7 +531,34 @@ fn bne<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     }
 }
 
+fn bmi<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    if ctx.cpu.status_flags.contains(StatusFlags::NEGATIVE) {
+        ctx.cpu.program_counter = ctx.operand_addr();
+    }
+}
+
+fn bpl<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    if !ctx.cpu.status_flags.contains(StatusFlags::NEGATIVE) {
+        ctx.cpu.program_counter = ctx.operand_addr();
+    }
+}
+
 // misc
+
+fn bit<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    let value = ctx.load_operand();
+    ctx.cpu.status_flags.set(
+        StatusFlags::NEGATIVE,
+        (value & StatusFlags::NEGATIVE.bits) > 0,
+    );
+    ctx.cpu.status_flags.set(
+        StatusFlags::OVERFLOW,
+        (value & StatusFlags::OVERFLOW.bits) > 0,
+    );
+    ctx.cpu
+        .status_flags
+        .set(StatusFlags::ZERO, (value & ctx.cpu.a) == 0);
+}
 
 fn hlt<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     ctx.cpu.halt = true;
