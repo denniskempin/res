@@ -22,6 +22,7 @@ impl PartialEq for Trace {
             && self.a == other.a
             && self.x == other.x
             && self.y == other.y
+            && self.p == other.p
     }
 }
 

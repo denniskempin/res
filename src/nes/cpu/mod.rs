@@ -61,12 +61,6 @@ impl Cpu {
         Ok(!self.halt)
     }
 
-    pub fn update_status_flags(&mut self, value: u8) {
-        self.status_flags.set(StatusFlags::ZERO, value == 0);
-        self.status_flags
-            .set(StatusFlags::NEGATIVE, value & 0b1000_0000 != 0);
-    }
-
     fn next_operation(&mut self, bus: &mut Bus) -> Result<Operation> {
         let operation = Operation::read(bus, self.program_counter)?;
         self.program_counter += operation.size() as u16;

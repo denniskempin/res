@@ -172,6 +172,13 @@ impl<AM: AddressModeImpl> Context<'_, AM> {
     pub fn store_operand(&mut self, value: u8) {
         AM::store(self.cpu, self.bus, self.addr, value)
     }
+
+    pub fn update_negative_zero_flags(&mut self, value: u8) {
+        self.cpu.status_flags.set(StatusFlags::ZERO, value == 0);
+        self.cpu
+            .status_flags
+            .set(StatusFlags::NEGATIVE, value & 0b1000_0000 != 0);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -311,6 +318,8 @@ trait AddressModeImpl {
 ////////////////////////////////////////////////////////////////////////////////
 // Operation Implementations
 
+// J** (Jump)
+
 fn jmp<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     ctx.cpu.program_counter = ctx.operand_addr();
 }
@@ -319,6 +328,8 @@ fn jsr<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     ctx.cpu.stack.push(ctx.cpu.program_counter);
     ctx.cpu.program_counter = ctx.operand_addr();
 }
+
+// ST* (Store)
 
 fn sta<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     ctx.store_operand(ctx.cpu.a);
@@ -332,44 +343,42 @@ fn sty<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     ctx.store_operand(ctx.cpu.y);
 }
 
-fn adc<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.a += ctx.load_operand();
-}
-
-fn inc<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    let value = ctx.load_operand() + 1;
-    ctx.store_operand(value);
-}
-
-fn inx<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.x = ctx.cpu.x.wrapping_add(1);
-}
+// LD* (Load)
 
 fn lda<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     ctx.cpu.a = ctx.load_operand();
-    ctx.cpu.update_status_flags(ctx.cpu.a);
-}
-
-fn tax<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.x = ctx.cpu.a;
-    ctx.cpu.update_status_flags(ctx.cpu.x);
+    ctx.update_negative_zero_flags(ctx.cpu.a);
 }
 
 fn ldy<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     ctx.cpu.y = ctx.load_operand();
+    ctx.update_negative_zero_flags(ctx.cpu.y);
 }
 
 fn ldx<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     ctx.cpu.x = ctx.load_operand();
+    ctx.update_negative_zero_flags(ctx.cpu.x);
+}
+
+// IN* (Increment)
+
+fn inc<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    let value = ctx.load_operand() + 1;
+    ctx.store_operand(value);
+    ctx.update_negative_zero_flags(value);
+}
+
+fn inx<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    ctx.cpu.x = ctx.cpu.x.wrapping_add(1);
+    ctx.update_negative_zero_flags(ctx.cpu.x);
 }
 
 fn iny<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.y += 1;
+    ctx.cpu.y = ctx.cpu.y.wrapping_add(1);
+    ctx.update_negative_zero_flags(ctx.cpu.y);
 }
 
-fn hlt<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.halt = true;
-}
+// SE* / CL* (Set / clear status bits)
 
 fn sec<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     ctx.cpu.status_flags.insert(StatusFlags::CARRY);
@@ -382,6 +391,8 @@ fn clc<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
 fn cld<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     ctx.cpu.status_flags.remove(StatusFlags::DECIMAL);
 }
+
+// B** (Branch)
 
 fn bcs<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     if ctx.cpu.status_flags.contains(StatusFlags::CARRY) {
@@ -405,6 +416,21 @@ fn bne<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     if !ctx.cpu.status_flags.contains(StatusFlags::ZERO) {
         ctx.cpu.program_counter = ctx.operand_addr();
     }
+}
+
+// misc
+
+fn hlt<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    ctx.cpu.halt = true;
+}
+
+fn adc<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    ctx.cpu.a += ctx.load_operand();
+}
+
+fn tax<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    ctx.cpu.x = ctx.cpu.a;
+    ctx.update_negative_zero_flags(ctx.cpu.x);
 }
 
 fn txs<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
