@@ -68,6 +68,7 @@ lazy_static! {
             opcode!(0x00, hlt, Implicit),
             opcode!(0x00, hlt, Implicit),
             opcode!(0x20, jsr, Absolute),
+            opcode!(0x60, rts, Implicit),
             opcode!(0x90, bcc, Relative),
             opcode!(0xA0, ldy, Immediate),
             opcode!(0xB0, bcs, Relative),
@@ -86,6 +87,7 @@ lazy_static! {
             //
             opcode!(0x65, adc, ZeroPage),
             opcode!(0x85, sta, ZeroPage),
+            opcode!(0x95, sta, ZeroPageX),
 
             //
             opcode!(0xE6, inc, ZeroPage),
@@ -95,6 +97,7 @@ lazy_static! {
             opcode!(0x18, clc, Implicit),
             opcode!(0x78, sei, Implicit),
             opcode!(0x38, sec, Implicit),
+            opcode!(0x88, dey, Implicit),
             opcode!(0xC8, iny, Implicit),
             opcode!(0xD8, cld, Implicit),
             opcode!(0xE8, inx, Implicit),
@@ -105,6 +108,8 @@ lazy_static! {
             //
             opcode!(0x9A, txs, Implicit),
             opcode!(0xAA, tax, Implicit),
+            opcode!(0xBA, tsx, Implicit),
+            opcode!(0xCA, dex, Implicit),
             opcode!(0xEA, nop, Implicit),
 
             //
@@ -112,6 +117,7 @@ lazy_static! {
 
             //
             opcode!(0x8D, sta, Absolute),
+            opcode!(0x9D, sta, AbsoluteX),
 
             //
             opcode!(0x8E, stx, Absolute),
@@ -236,7 +242,43 @@ impl AddressModeImpl for Absolute {
 
     fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
         return format!(
-            " {:04X} @ {:02X}",
+            " {:04X} @{:02X}",
+            Self::addr(cpu, bus, addr),
+            Self::load(cpu, bus, addr)
+        );
+    }
+}
+
+struct AbsoluteX {}
+impl AddressModeImpl for AbsoluteX {
+    const OPERAND_SIZE: usize = 2;
+
+    fn addr(cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
+        bus.read_u16(addr + 1) + cpu.x as u16
+    }
+
+    fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
+        return format!(
+            " {:04X}+X ={:04X} @{:02X}",
+            bus.read_u16(addr + 1),
+            Self::addr(cpu, bus, addr),
+            Self::load(cpu, bus, addr)
+        );
+    }
+}
+
+struct AbsoluteY {}
+impl AddressModeImpl for AbsoluteY {
+    const OPERAND_SIZE: usize = 2;
+
+    fn addr(cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
+        bus.read_u16(addr + 1) + cpu.y as u16
+    }
+
+    fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
+        return format!(
+            " {:04X}+Y ={:04X} @{:02X}",
+            bus.read_u16(addr + 1),
             Self::addr(cpu, bus, addr),
             Self::load(cpu, bus, addr)
         );
@@ -260,16 +302,58 @@ impl AddressModeImpl for ZeroPage {
     }
 }
 
+struct ZeroPageX {}
+impl AddressModeImpl for ZeroPageX {
+    const OPERAND_SIZE: usize = 1;
+
+    fn addr(cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
+        bus.read_u8(addr + 1) as u16 + cpu.x as u16
+    }
+
+    fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
+        return format!(
+            " {:02X}+X ={:04X} @ {:02X}",
+            bus.read_u8(addr + 1),
+            Self::addr(cpu, bus, addr),
+            Self::load(cpu, bus, addr)
+        );
+    }
+}
+
+struct ZeroPageY {}
+impl AddressModeImpl for ZeroPageY {
+    const OPERAND_SIZE: usize = 1;
+
+    fn addr(cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
+        bus.read_u8(addr + 1) as u16 + cpu.y as u16
+    }
+
+    fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
+        return format!(
+            " {:02X}+Y ={:04X} @ {:02X}",
+            bus.read_u8(addr + 1),
+            Self::addr(cpu, bus, addr),
+            Self::load(cpu, bus, addr)
+        );
+    }
+}
+
 struct Relative {}
 impl AddressModeImpl for Relative {
     const OPERAND_SIZE: usize = 1;
 
     fn addr(_cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
-        addr + 1 + Self::OPERAND_SIZE as u16 + bus.read_u8(addr + 1) as u16
+        let delta = bus.read_u8(addr + 1) as i8 as i16;
+        let base_addr = addr + 1 + Self::OPERAND_SIZE as u16;
+        if delta > 0 {
+            base_addr.wrapping_add(delta.unsigned_abs())
+        } else {
+            base_addr.wrapping_sub(delta.unsigned_abs())
+        }
     }
 
     fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
-        let relative_addr = bus.read_u8(addr + 1);
+        let relative_addr = bus.read_u8(addr + 1) as i8;
         return format!(
             " {:+02X} ={:04X} @ {:02X}",
             relative_addr,
@@ -326,9 +410,14 @@ fn jmp<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
 
 fn jsr<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     let bytes = ctx.cpu.program_counter.to_le_bytes();
-    ctx.cpu.stack_push(ctx.bus, bytes[0]);
     ctx.cpu.stack_push(ctx.bus, bytes[1]);
+    ctx.cpu.stack_push(ctx.bus, bytes[0]);
     ctx.cpu.program_counter = ctx.operand_addr();
+}
+
+fn rts<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    let bytes = [ctx.cpu.stack_pop(ctx.bus), ctx.cpu.stack_pop(ctx.bus)];
+    ctx.cpu.program_counter = u16::from_le_bytes(bytes);
 }
 
 // ST* (Store)
@@ -377,6 +466,24 @@ fn inx<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
 
 fn iny<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     ctx.cpu.y = ctx.cpu.y.wrapping_add(1);
+    ctx.update_negative_zero_flags(ctx.cpu.y);
+}
+
+// DE* (Decrement)
+
+fn dec<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    let value = ctx.load_operand() - 1;
+    ctx.store_operand(value);
+    ctx.update_negative_zero_flags(value);
+}
+
+fn dex<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    ctx.cpu.x = ctx.cpu.x.wrapping_sub(1);
+    ctx.update_negative_zero_flags(ctx.cpu.x);
+}
+
+fn dey<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    ctx.cpu.y = ctx.cpu.y.wrapping_sub(1);
     ctx.update_negative_zero_flags(ctx.cpu.y);
 }
 
@@ -432,6 +539,11 @@ fn adc<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
 
 fn tax<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     ctx.cpu.x = ctx.cpu.a;
+    ctx.update_negative_zero_flags(ctx.cpu.x);
+}
+
+fn tsx<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    ctx.cpu.x = ctx.cpu.sp;
     ctx.update_negative_zero_flags(ctx.cpu.x);
 }
 

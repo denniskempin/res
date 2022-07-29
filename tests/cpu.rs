@@ -29,7 +29,7 @@ pub fn test_basic_program() {
 #[test]
 pub fn test_01_basic() {
     let system = System::with_ines(Path::new("tests/cpu/01-basics.nes")).unwrap();
-    compare_to_log(system, "tests/cpu/01-basics.log", 25);
+    compare_to_log(system, "tests/cpu/01-basics.log", 6173);
 }
 
 #[test]
@@ -43,7 +43,7 @@ pub fn compare_to_log(mut system: System, log_file: &str, goal_count: usize) {
     let log = io::BufReader::new(File::open(log_file).unwrap());
 
     for (i, line) in log.lines().enumerate() {
-        if i >= goal_count {
+        if goal_count > 0 && i >= goal_count {
             println!("Reached goal of {goal_count} instructions. Success.");
             break;
         }
