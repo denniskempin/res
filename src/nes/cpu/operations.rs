@@ -325,7 +325,9 @@ fn jmp<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
 }
 
 fn jsr<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.stack.push(ctx.cpu.program_counter);
+    let bytes = ctx.cpu.program_counter.to_le_bytes();
+    ctx.cpu.stack_push(ctx.bus, bytes[0]);
+    ctx.cpu.stack_push(ctx.bus, bytes[1]);
     ctx.cpu.program_counter = ctx.operand_addr();
 }
 
@@ -434,7 +436,7 @@ fn tax<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
 }
 
 fn txs<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.stack.push(ctx.cpu.x as u16);
+    ctx.cpu.sp = ctx.cpu.x;
 }
 
 fn sei<AM: AddressModeImpl>(_ctx: &mut Context<AM>) {}

@@ -41,6 +41,7 @@ impl System {
                 x: self.cpu.x,
                 y: self.cpu.y,
                 p: self.cpu.status_flags.bits(),
+                sp: self.cpu.sp,
             })
         } else {
             Ok(Trace {
@@ -51,6 +52,7 @@ impl System {
                 x: self.cpu.x,
                 y: self.cpu.y,
                 p: self.cpu.status_flags.bits(),
+                sp: self.cpu.sp,
             })
         }
     }

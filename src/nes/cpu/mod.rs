@@ -33,7 +33,7 @@ pub struct Cpu {
     pub status_flags: StatusFlags,
     pub program_counter: u16,
     pub halt: bool,
-    pub stack: Vec<u16>,
+    pub sp: u8,
 }
 
 impl Default for Cpu {
@@ -45,12 +45,14 @@ impl Default for Cpu {
             status_flags: StatusFlags::from_bits_truncate(0x24),
             program_counter: 0,
             halt: false,
-            stack: Vec::new(),
+            sp: 0xFD,
         }
     }
 }
 
 impl Cpu {
+    const STACK_ADDR: u16 = 0x0100;
+
     pub fn tick(&mut self, _clock: u64, bus: &mut Bus) -> Result<bool> {
         self.execute_one(bus)
     }
@@ -65,5 +67,15 @@ impl Cpu {
         let operation = Operation::read(bus, self.program_counter)?;
         self.program_counter += operation.size() as u16;
         Ok(operation)
+    }
+
+    fn stack_push(&mut self, bus: &mut Bus, value: u8) {
+        bus.write_u8(Self::STACK_ADDR + self.sp as u16, value);
+        self.sp -= 1;
+    }
+
+    fn stack_pop(&mut self, bus: &mut Bus) -> u8 {
+        self.sp += 1;
+        bus.read_u8(Self::STACK_ADDR + self.sp as u16)
     }
 }
