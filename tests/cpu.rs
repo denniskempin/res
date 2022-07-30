@@ -36,7 +36,7 @@ pub fn test_01_basic() {
 pub fn test_nestest() {
     let mut system = System::with_ines(Path::new("tests/cpu/nestest.nes")).unwrap();
     system.cpu.program_counter = 0xC000;
-    compare_to_log(system, "tests/cpu/nestest.log", 1000);
+    compare_to_log(system, "tests/cpu/nestest.log", 3300);
 }
 
 pub fn compare_to_log(mut system: System, log_file: &str, goal_count: usize) {
