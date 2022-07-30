@@ -70,14 +70,17 @@ lazy_static! {
             opcode!(0x10, bpl, Relative),
             opcode!(0x20, jsr, Absolute),
             opcode!(0x30, bmi, Relative),
+            opcode!(0x40, rti, Implicit),
             opcode!(0x50, bvc, Relative),
             opcode!(0x60, rts, Implicit),
             opcode!(0x70, bvs, Relative),
             opcode!(0x90, bcc, Relative),
             opcode!(0xA0, ldy, Immediate),
             opcode!(0xB0, bcs, Relative),
-            opcode!(0xF0, beq, Relative),
+            opcode!(0xC0, cpy, Immediate),
             opcode!(0xD0, bne, Relative),
+            opcode!(0xE0, cpx, Immediate),
+            opcode!(0xF0, beq, Relative),
 
             //
             opcode!(0x91, sta, IndirectY),
@@ -107,6 +110,8 @@ lazy_static! {
             opcode!(0x68, pla, Implicit),
             opcode!(0x78, sei, Implicit),
             opcode!(0x88, dey, Implicit),
+            opcode!(0x98, tya, Implicit),
+            opcode!(0xA8, tay, Implicit),
             opcode!(0xB8, clv, Implicit),
             opcode!(0xC8, iny, Implicit),
             opcode!(0xD8, cld, Implicit),
@@ -120,9 +125,13 @@ lazy_static! {
             opcode!(0x69, adc, Immediate),
             opcode!(0xC9, cmp, Immediate),
             opcode!(0xA9, lda, Immediate),
+            opcode!(0xE9, sbc, Immediate),
 
             //
+            opcode!(0x0A, asl, Acumulator),
+            opcode!(0x4A, lsr, Acumulator),
             opcode!(0x9A, txs, Implicit),
+            opcode!(0x8A, txa, Implicit),
             opcode!(0xAA, tax, Implicit),
             opcode!(0xBA, tsx, Implicit),
             opcode!(0xCA, dex, Implicit),
@@ -133,10 +142,12 @@ lazy_static! {
             opcode!(0x2C, bit, Absolute),
 
             //
+            opcode!(0xAD, lda, Absolute),
             opcode!(0x8D, sta, Absolute),
             opcode!(0x9D, sta, AbsoluteX),
 
             //
+            opcode!(0xAE, ldx, Absolute),
             opcode!(0x8E, stx, Absolute),
         ];
 
@@ -219,7 +230,7 @@ impl AddressModeImpl for Immediate {
         bus.read_u8(addr + 1)
     }
 
-    fn store(_cpu: &Cpu, _bus: &mut Bus, _addr: u16, _value: u8) {
+    fn store(_cpu: &mut Cpu, _bus: &mut Bus, _addr: u16, _value: u8) {
         unimplemented!();
     }
 
@@ -240,12 +251,33 @@ impl AddressModeImpl for Implicit {
         unimplemented!();
     }
 
-    fn store(_cpu: &Cpu, _bus: &mut Bus, _addr: u16, _value: u8) {
+    fn store(_cpu: &mut Cpu, _bus: &mut Bus, _addr: u16, _value: u8) {
         unimplemented!();
     }
 
     fn format(_cpu: &Cpu, _bus: &Bus, _addr: u16) -> String {
         "".to_string()
+    }
+}
+
+struct Acumulator {}
+impl AddressModeImpl for Acumulator {
+    const OPERAND_SIZE: usize = 0;
+
+    fn addr(_cpu: &Cpu, _bus: &Bus, _addr: u16) -> u16 {
+        unimplemented!();
+    }
+
+    fn load(cpu: &Cpu, _bus: &Bus, _addr: u16) -> u8 {
+        cpu.a
+    }
+
+    fn store(cpu: &mut Cpu, _bus: &mut Bus, _addr: u16, value: u8) {
+        cpu.a = value;
+    }
+
+    fn format(_cpu: &Cpu, _bus: &Bus, _addr: u16) -> String {
+        " A".to_string()
     }
 }
 
@@ -411,7 +443,7 @@ trait AddressModeImpl {
         bus.read_u8(Self::addr(cpu, bus, addr))
     }
 
-    fn store(cpu: &Cpu, bus: &mut Bus, addr: u16, value: u8) {
+    fn store(cpu: &mut Cpu, bus: &mut Bus, addr: u16, value: u8) {
         bus.write_u8(Self::addr(cpu, bus, addr), value)
     }
 }
@@ -426,13 +458,20 @@ fn jmp<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
 }
 
 fn jsr<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    let bytes = ctx.cpu.program_counter.to_le_bytes();
+    let bytes = (ctx.cpu.program_counter - 1).to_le_bytes();
     ctx.cpu.stack_push(ctx.bus, bytes[1]);
     ctx.cpu.stack_push(ctx.bus, bytes[0]);
     ctx.cpu.program_counter = ctx.operand_addr();
 }
 
 fn rts<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    let bytes = [ctx.cpu.stack_pop(ctx.bus), ctx.cpu.stack_pop(ctx.bus)];
+    // We are reading the address back in inverse order, hence big endian.
+    ctx.cpu.program_counter = u16::from_le_bytes(bytes) + 1;
+}
+
+fn rti<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    plp(ctx);
     let bytes = [ctx.cpu.stack_pop(ctx.bus), ctx.cpu.stack_pop(ctx.bus)];
     ctx.cpu.program_counter = u16::from_le_bytes(bytes);
 }
@@ -610,18 +649,39 @@ fn plp<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
 // Basic Arithmetic
 
 fn adc<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    let carry: u8 = if ctx.cpu.status_flags.contains(StatusFlags::CARRY) {
+    let carry: u16 = if ctx.cpu.status_flags.contains(StatusFlags::CARRY) {
         1
     } else {
         0
     };
-    let (value, carry1) = ctx.cpu.a.overflowing_add(ctx.load_operand());
-    let (value, carry2) = value.overflowing_add(carry);
-    ctx.cpu.a = value;
+    let operand = ctx.load_operand();
+    let result = ctx.cpu.a as u16 + operand as u16 + carry;
+
+    ctx.cpu.status_flags.set(StatusFlags::CARRY, result > 0xFF);
+    ctx.cpu.status_flags.set(
+        StatusFlags::OVERFLOW,
+        (operand ^ result as u8) & (result as u8 ^ ctx.cpu.a) & 0x80 != 0,
+    );
+    ctx.cpu.a = result as u8;
     ctx.update_negative_zero_flags(ctx.cpu.a);
-    ctx.cpu
-        .status_flags
-        .set(StatusFlags::CARRY, carry1 | carry2);
+}
+
+fn sbc<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    let carry: u16 = if ctx.cpu.status_flags.contains(StatusFlags::CARRY) {
+        1
+    } else {
+        0
+    };
+    let operand = (ctx.load_operand() as i8).wrapping_neg().wrapping_sub(1) as u8;
+    let result = ctx.cpu.a as u16 + operand as u16 + carry;
+
+    ctx.cpu.status_flags.set(StatusFlags::CARRY, result > 0xFF);
+    ctx.cpu.status_flags.set(
+        StatusFlags::OVERFLOW,
+        (operand ^ result as u8) & (result as u8 ^ ctx.cpu.a) & 0x80 != 0,
+    );
+    ctx.cpu.a = result as u8;
+    ctx.update_negative_zero_flags(ctx.cpu.a);
 }
 
 fn and<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
@@ -640,11 +700,42 @@ fn eor<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
 }
 
 fn cmp<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    let (value, carry) = ctx.cpu.a.overflowing_sub(ctx.load_operand());
+    let (value, overflow) = ctx.cpu.a.overflowing_sub(ctx.load_operand());
     ctx.update_negative_zero_flags(value);
-    ctx.cpu.status_flags.set(StatusFlags::CARRY, !carry);
+    ctx.cpu.status_flags.set(StatusFlags::CARRY, !overflow);
 }
 
+fn cpx<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    let (value, overflow) = ctx.cpu.x.overflowing_sub(ctx.load_operand());
+    ctx.update_negative_zero_flags(value);
+    ctx.cpu.status_flags.set(StatusFlags::CARRY, !overflow);
+}
+
+fn cpy<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    let (value, overflow) = ctx.cpu.y.overflowing_sub(ctx.load_operand());
+    ctx.update_negative_zero_flags(value);
+    ctx.cpu.status_flags.set(StatusFlags::CARRY, !overflow);
+}
+
+fn lsr<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    let operand = ctx.load_operand();
+    let (result, _) = operand.overflowing_shr(1);
+    ctx.store_operand(result);
+    ctx.update_negative_zero_flags(result);
+    ctx.cpu
+        .status_flags
+        .set(StatusFlags::CARRY, (operand & 0x01) != 0);
+}
+
+fn asl<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    let operand = ctx.load_operand();
+    let (result, _) = operand.overflowing_shl(1);
+    ctx.store_operand(result);
+    ctx.update_negative_zero_flags(result);
+    ctx.cpu
+        .status_flags
+        .set(StatusFlags::CARRY, (operand & 0x80) != 0);
+}
 // misc
 
 fn bit<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
@@ -666,9 +757,24 @@ fn hlt<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     ctx.cpu.halt = true;
 }
 
+fn txa<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    ctx.cpu.a = ctx.cpu.x;
+    ctx.update_negative_zero_flags(ctx.cpu.a);
+}
+
 fn tax<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     ctx.cpu.x = ctx.cpu.a;
     ctx.update_negative_zero_flags(ctx.cpu.x);
+}
+
+fn tay<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    ctx.cpu.y = ctx.cpu.a;
+    ctx.update_negative_zero_flags(ctx.cpu.y);
+}
+
+fn tya<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    ctx.cpu.a = ctx.cpu.y;
+    ctx.update_negative_zero_flags(ctx.cpu.a);
 }
 
 fn tsx<AM: AddressModeImpl>(ctx: &mut Context<AM>) {

@@ -78,4 +78,29 @@ impl Cpu {
         self.sp += 1;
         bus.read_u8(Self::STACK_ADDR + self.sp as u16)
     }
+
+    fn stack_peek(&self, bus: &Bus, idx: u8) -> u8 {
+        bus.read_u8(Self::STACK_ADDR + (self.sp + idx) as u16)
+    }
+
+    pub fn read_stack<'a>(&self, bus: &'a Bus) -> &'a [u8] {
+        let stack_entries = 0xFF - self.sp;
+        if stack_entries > 0 {
+            bus.slice(
+                Self::STACK_ADDR + self.sp as u16 + 1,
+                stack_entries as usize,
+            )
+        } else {
+            &[]
+        }
+    }
+
+    pub fn print_stack(&self, bus: &Bus) {
+        let formatted: Vec<String> = self
+            .read_stack(bus)
+            .iter()
+            .map(|s| format!("{:02X}", s))
+            .collect();
+        println!("{:?}", formatted);
+    }
 }
