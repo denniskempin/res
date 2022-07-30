@@ -70,7 +70,9 @@ lazy_static! {
             opcode!(0x10, bpl, Relative),
             opcode!(0x20, jsr, Absolute),
             opcode!(0x30, bmi, Relative),
+            opcode!(0x50, bvc, Relative),
             opcode!(0x60, rts, Implicit),
+            opcode!(0x70, bvs, Relative),
             opcode!(0x90, bcc, Relative),
             opcode!(0xA0, ldy, Immediate),
             opcode!(0xB0, bcs, Relative),
@@ -97,15 +99,26 @@ lazy_static! {
             opcode!(0x86, stx, ZeroPage),
 
             //
+            opcode!(0x08, php, Implicit),
+            opcode!(0x28, plp, Implicit),
             opcode!(0x18, clc, Implicit),
-            opcode!(0x78, sei, Implicit),
             opcode!(0x38, sec, Implicit),
+            opcode!(0x48, pha, Implicit),
+            opcode!(0x68, pla, Implicit),
+            opcode!(0x78, sei, Implicit),
             opcode!(0x88, dey, Implicit),
+            opcode!(0xB8, clv, Implicit),
             opcode!(0xC8, iny, Implicit),
             opcode!(0xD8, cld, Implicit),
             opcode!(0xE8, inx, Implicit),
+            opcode!(0xF8, sed, Implicit),
 
             //
+            opcode!(0x09, ora, Immediate),
+            opcode!(0x29, and, Immediate),
+            opcode!(0x49, eor, Immediate),
+            opcode!(0x69, adc, Immediate),
+            opcode!(0xC9, cmp, Immediate),
             opcode!(0xA9, lda, Immediate),
 
             //
@@ -493,6 +506,14 @@ fn dey<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
 
 // SE* / CL* (Set / clear status bits)
 
+fn sed<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    ctx.cpu.status_flags.insert(StatusFlags::DECIMAL);
+}
+
+fn cld<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    ctx.cpu.status_flags.remove(StatusFlags::DECIMAL);
+}
+
 fn sec<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     ctx.cpu.status_flags.insert(StatusFlags::CARRY);
 }
@@ -501,8 +522,12 @@ fn clc<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     ctx.cpu.status_flags.remove(StatusFlags::CARRY);
 }
 
-fn cld<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.status_flags.remove(StatusFlags::DECIMAL);
+fn sev<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    ctx.cpu.status_flags.insert(StatusFlags::OVERFLOW);
+}
+
+fn clv<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    ctx.cpu.status_flags.remove(StatusFlags::OVERFLOW);
 }
 
 // B** (Branch)
@@ -543,6 +568,83 @@ fn bpl<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     }
 }
 
+fn bvs<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    if ctx.cpu.status_flags.contains(StatusFlags::OVERFLOW) {
+        ctx.cpu.program_counter = ctx.operand_addr();
+    }
+}
+
+fn bvc<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    if !ctx.cpu.status_flags.contains(StatusFlags::OVERFLOW) {
+        ctx.cpu.program_counter = ctx.operand_addr();
+    }
+}
+
+// PH* (Push), PL* (Pull)
+
+fn pha<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    ctx.cpu.stack_push(ctx.bus, ctx.cpu.a);
+}
+
+fn php<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    let mut value = ctx.cpu.status_flags;
+    value.insert(StatusFlags::BREAK);
+    ctx.cpu.stack_push(ctx.bus, value.bits);
+}
+
+fn pla<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    ctx.cpu.a = ctx.cpu.stack_pop(ctx.bus);
+    ctx.update_negative_zero_flags(ctx.cpu.a);
+}
+
+fn plp<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    let mut value = StatusFlags::from_bits_truncate(ctx.cpu.stack_pop(ctx.bus));
+    value.set(
+        StatusFlags::BREAK,
+        ctx.cpu.status_flags.contains(StatusFlags::BREAK),
+    );
+    value.insert(StatusFlags::UNUSED);
+    ctx.cpu.status_flags = value;
+}
+
+// Basic Arithmetic
+
+fn adc<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    let carry: u8 = if ctx.cpu.status_flags.contains(StatusFlags::CARRY) {
+        1
+    } else {
+        0
+    };
+    let (value, carry1) = ctx.cpu.a.overflowing_add(ctx.load_operand());
+    let (value, carry2) = value.overflowing_add(carry);
+    ctx.cpu.a = value;
+    ctx.update_negative_zero_flags(ctx.cpu.a);
+    ctx.cpu
+        .status_flags
+        .set(StatusFlags::CARRY, carry1 | carry2);
+}
+
+fn and<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    ctx.cpu.a = ctx.cpu.a & ctx.load_operand();
+    ctx.update_negative_zero_flags(ctx.cpu.a);
+}
+
+fn ora<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    ctx.cpu.a = ctx.cpu.a | ctx.load_operand();
+    ctx.update_negative_zero_flags(ctx.cpu.a);
+}
+
+fn eor<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    ctx.cpu.a = ctx.cpu.a ^ ctx.load_operand();
+    ctx.update_negative_zero_flags(ctx.cpu.a);
+}
+
+fn cmp<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    let (value, carry) = ctx.cpu.a.overflowing_sub(ctx.load_operand());
+    ctx.update_negative_zero_flags(value);
+    ctx.cpu.status_flags.set(StatusFlags::CARRY, !carry);
+}
+
 // misc
 
 fn bit<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
@@ -562,10 +664,6 @@ fn bit<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
 
 fn hlt<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
     ctx.cpu.halt = true;
-}
-
-fn adc<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.a += ctx.load_operand();
 }
 
 fn tax<AM: AddressModeImpl>(ctx: &mut Context<AM>) {

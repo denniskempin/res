@@ -29,14 +29,14 @@ pub fn test_basic_program() {
 #[test]
 pub fn test_01_basic() {
     let system = System::with_ines(Path::new("tests/cpu/01-basics.nes")).unwrap();
-    compare_to_log(system, "tests/cpu/01-basics.log", 0);
+    compare_to_log(system, "tests/cpu/01-basics.log", 4);
 }
 
 #[test]
 pub fn test_nestest() {
     let mut system = System::with_ines(Path::new("tests/cpu/nestest.nes")).unwrap();
     system.cpu.program_counter = 0xC000;
-    compare_to_log(system, "tests/cpu/nestest.log", 37);
+    compare_to_log(system, "tests/cpu/nestest.log", 218);
 }
 
 pub fn compare_to_log(mut system: System, log_file: &str, goal_count: usize) {
