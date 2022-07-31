@@ -72,6 +72,7 @@ macro_rules! opcode {
 
 lazy_static! {
     static ref OPCODE_TABLE: [OpCodeTableEntry; 0x100] = {
+        // Specify opcodes out of order to better organize them.
         const OPCODE_LIST: &[OpCodeTableEntry] = &[
             // Codes ending in 0
             opcode!(0x00, hlt, Implicit),
@@ -110,7 +111,22 @@ lazy_static! {
             opcode!(0xF1, sbc, IndirectY),
 
             // Codes ending in 2
+            opcode!(0x02, nop, Implicit),
+            opcode!(0x12, nop, Implicit),
+            opcode!(0x22, nop, Implicit),
+            opcode!(0x32, nop, Implicit),
+            opcode!(0x42, nop, Implicit),
+            opcode!(0x52, nop, Implicit),
+            opcode!(0x62, nop, Implicit),
+            opcode!(0x72, nop, Implicit),
+            opcode!(0x82, nop, Immediate),
+            opcode!(0x92, nop, Implicit),
             opcode!(0xA2, ldx, Immediate),
+            opcode!(0xB2, nop, Implicit),
+            opcode!(0xC2, nop, Immediate),
+            opcode!(0xD2, nop, Implicit),
+            opcode!(0xE2, nop, Immediate),
+            opcode!(0xF2, nop, Implicit),
 
             // Codes ending in 3
             opcode!(0x03, nop, IndirectX),
@@ -185,7 +201,22 @@ lazy_static! {
             opcode!(0xF6, inc, ZeroPageX),
 
             // Codes ending in 7
-            // ... only illegal opcodes
+            opcode!(0x07, nop, ZeroPage),
+            opcode!(0x17, nop, ZeroPageX),
+            opcode!(0x27, nop, ZeroPage),
+            opcode!(0x37, nop, ZeroPageX),
+            opcode!(0x47, nop, ZeroPage),
+            opcode!(0x57, nop, ZeroPageX),
+            opcode!(0x67, nop, ZeroPage),
+            opcode!(0x77, nop, ZeroPageX),
+            opcode!(0x87, nop, ZeroPage),
+            opcode!(0x97, nop, ZeroPageY),
+            opcode!(0xA7, nop, ZeroPage),
+            opcode!(0xB7, nop, ZeroPageY),
+            opcode!(0xC7, nop, ZeroPage),
+            opcode!(0xD7, nop, ZeroPageX),
+            opcode!(0xE7, nop, ZeroPage),
+            opcode!(0xF7, nop, ZeroPageX),
 
             // Codes ending in 8
             opcode!(0x08, php, Implicit),
@@ -242,7 +273,22 @@ lazy_static! {
             opcode!(0xFA, nop, Implicit),
 
             // Codes ending in B
-            // ... only illegal opcodes
+            opcode!(0x0B, nop, Immediate),
+            opcode!(0x1B, nop, AbsoluteY),
+            opcode!(0x2B, nop, Immediate),
+            opcode!(0x3B, nop, AbsoluteY),
+            opcode!(0x4B, nop, Immediate),
+            opcode!(0x5B, nop, AbsoluteY),
+            opcode!(0x6B, nop, Immediate),
+            opcode!(0x7B, nop, AbsoluteY),
+            opcode!(0x8B, nop, Immediate),
+            opcode!(0x9B, nop, AbsoluteY),
+            opcode!(0xAB, nop, Immediate),
+            opcode!(0xBB, nop, AbsoluteY),
+            opcode!(0xCB, nop, Immediate),
+            opcode!(0xDB, nop, AbsoluteY),
+            opcode!(0xEB, nop, Immediate),
+            opcode!(0xFB, nop, AbsoluteY),
 
             // Codes ending in C
             opcode!(0x0C, nop, Absolute),
@@ -263,7 +309,7 @@ lazy_static! {
             opcode!(0xFC, nop, AbsoluteX),
 
 
-            //
+            // Codes ending in D
             opcode!(0x0D, ora, Absolute),
             opcode!(0x1D, ora, AbsoluteX),
             opcode!(0x2D, and, Absolute),
@@ -281,7 +327,7 @@ lazy_static! {
             opcode!(0xED, sbc, Absolute),
             opcode!(0xFD, sbc, AbsoluteX),
 
-            //
+            // Codes endding in E
             opcode!(0x0E, asl, Absolute),
             opcode!(0x1E, asl, AbsoluteX),
             opcode!(0x2E, rol, Absolute),
@@ -298,12 +344,34 @@ lazy_static! {
             opcode!(0xDE, dec, AbsoluteX),
             opcode!(0xEE, inc, Absolute),
             opcode!(0xFE, inc, AbsoluteX),
+
+            // Codes endding in F
+            opcode!(0x0F, nop, Absolute),
+            opcode!(0x1F, nop, AbsoluteX),
+            opcode!(0x2F, nop, Absolute),
+            opcode!(0x3F, nop, AbsoluteX),
+            opcode!(0x4F, nop, Absolute),
+            opcode!(0x5F, nop, AbsoluteX),
+            opcode!(0x6F, nop, Absolute),
+            opcode!(0x7F, nop, AbsoluteX),
+            opcode!(0x8F, nop, Absolute),
+            opcode!(0x9F, nop, AbsoluteX),
+            opcode!(0xAF, nop, Absolute),
+            opcode!(0xBF, nop, AbsoluteY),
+            opcode!(0xCF, nop, Absolute),
+            opcode!(0xDF, nop, AbsoluteX),
+            opcode!(0xEF, nop, Absolute),
+            opcode!(0xFF, nop, AbsoluteX),
         ];
 
         // Turn list of codes into opcode lookup table
         let mut table = [OpCodeTableEntry::default(); 0x100];
         for entry in OPCODE_LIST {
             table[entry.code as usize] = *entry;
+        }
+        // Verify all opcodes are specified
+        for (i, entry) in table.iter().enumerate() {
+            assert!(i == entry.code as usize);
         }
         table
     };
