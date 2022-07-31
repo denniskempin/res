@@ -36,7 +36,7 @@ pub fn test_01_basic() {
 pub fn test_nestest() {
     let mut system = System::with_ines(Path::new("tests/cpu/nestest.nes")).unwrap();
     system.cpu.program_counter = 0xC000;
-    compare_to_log(system, "tests/cpu/nestest.log", 3300);
+    compare_to_log(system, "tests/cpu/nestest.log", 0);
 }
 
 pub fn compare_to_log(mut system: System, log_file: &str, goal_count: usize) {
@@ -52,8 +52,10 @@ pub fn compare_to_log(mut system: System, log_file: &str, goal_count: usize) {
         println!("{i:6}: {expected_trace}");
         let actual_trace = system.trace().unwrap();
         println!("{i:6}: {actual_trace}");
+        if actual_trace.opcode_raw[0] == 0x6C {
+            println!("Debug now");
+        }
         assert_eq!(expected_trace, actual_trace);
-
         system.tick().unwrap();
     }
 }

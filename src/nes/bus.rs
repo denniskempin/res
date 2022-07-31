@@ -40,6 +40,18 @@ impl Bus {
     }
 
     pub fn read_u16(&self, addr: u16) -> u16 {
+        // u16 reads wrap pages?
+        // reading word from  0x02FF will read
+        // 0x02FF and 0x0100
+        // Same with zero page reads.
+        //
+        // Supposedly zero page reads never cross page boundaries,
+        // but I am observing the same for indirect address mode.
+        //
+        // Wow. That's a CPU bug. Amazing that I am running into this
+        // so early on. Indirect addressing should allow crossing
+        // of page boundaries, but does not. Later versions of the CPU
+        // fix this. Amazing.
         u16::from_le_bytes(self.slice(addr, 2).try_into().unwrap())
     }
 

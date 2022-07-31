@@ -143,13 +143,13 @@ lazy_static! {
             opcode!(0x66, ror, ZeroPage),
             opcode!(0x76, ror, ZeroPageX),
             opcode!(0x86, stx, ZeroPage),
-            opcode!(0x96, stx, ZeroPageX),
+            opcode!(0x96, stx, ZeroPageY),
             opcode!(0xA6, ldx, ZeroPage),
             opcode!(0xB6, ldx, ZeroPageY),
             opcode!(0xC6, dec, ZeroPage),
-            opcode!(0xD6, dec, ZeroPageY),
+            opcode!(0xD6, dec, ZeroPageX),
             opcode!(0xE6, inc, ZeroPage),
-            opcode!(0xF6, inc, ZeroPageY),
+            opcode!(0xF6, inc, ZeroPageX),
 
             // Codes ending in 7
             // ... only illegal opcodes
@@ -254,9 +254,9 @@ lazy_static! {
             opcode!(0xAE, ldx, Absolute),
             opcode!(0xBE, ldx, AbsoluteY),
             opcode!(0xCE, dec, Absolute),
-            opcode!(0xDE, dec, AbsoluteY),
+            opcode!(0xDE, dec, AbsoluteX),
             opcode!(0xEE, inc, Absolute),
-            opcode!(0xFE, inc, AbsoluteY),
+            opcode!(0xFE, inc, AbsoluteX),
         ];
 
         // Turn list of codes into opcode lookup table
@@ -429,7 +429,7 @@ impl AddressModeImpl for AbsoluteY {
     const OPERAND_SIZE: usize = 2;
 
     fn addr(cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
-        bus.read_u16(addr + 1) + cpu.y as u16
+        bus.read_u16(addr + 1).wrapping_add(cpu.y as u16)
     }
 
     fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
@@ -464,7 +464,7 @@ impl AddressModeImpl for ZeroPageX {
     const OPERAND_SIZE: usize = 1;
 
     fn addr(cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
-        bus.read_u8(addr + 1) as u16 + cpu.x as u16
+        bus.read_u8(addr + 1).wrapping_add(cpu.x) as u16
     }
 
     fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
@@ -482,7 +482,7 @@ impl AddressModeImpl for ZeroPageY {
     const OPERAND_SIZE: usize = 1;
 
     fn addr(cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
-        bus.read_u8(addr + 1) as u16 + cpu.y as u16
+        bus.read_u8(addr + 1).wrapping_add(cpu.y) as u16
     }
 
     fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
@@ -525,7 +525,15 @@ impl AddressModeImpl for Indirect {
     const OPERAND_SIZE: usize = 2;
 
     fn addr(cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
-        bus.read_u16(bus.read_u16(addr + 1))
+        let indirect_addr = bus.read_u16(addr + 1);
+        let bytes = if indirect_addr & 0x00FF == 0x00FF {
+            // CPU Bug: Address wraps around inside page.
+            let page = indirect_addr & 0xFF00;
+            [bus.read_u8(indirect_addr), bus.read_u8(page)]
+        } else {
+            [bus.read_u8(indirect_addr), bus.read_u8(indirect_addr + 1)]
+        };
+        u16::from_le_bytes(bytes)
     }
 
     fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
