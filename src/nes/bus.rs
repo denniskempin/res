@@ -19,7 +19,8 @@ impl Bus {
             RomDevice::START_ADDR..=RomDevice::END_ADDR => {
                 self.rom.slice(addr - RomDevice::START_ADDR, length)
             }
-            _ => unimplemented!("Invalid read from {addr}"),
+            _ => &[0, 0, 0],
+            //_ => unimplemented!("Invalid read from {addr}"),
         }
     }
 

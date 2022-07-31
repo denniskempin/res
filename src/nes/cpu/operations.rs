@@ -111,40 +111,40 @@ lazy_static! {
             opcode!(0xF1, sbc, IndirectY),
 
             // Codes ending in 2
-            opcode!(0x02, nop, Implicit),
-            opcode!(0x12, nop, Implicit),
-            opcode!(0x22, nop, Implicit),
-            opcode!(0x32, nop, Implicit),
-            opcode!(0x42, nop, Implicit),
-            opcode!(0x52, nop, Implicit),
-            opcode!(0x62, nop, Implicit),
-            opcode!(0x72, nop, Implicit),
+            opcode!(0x02, ill, Implicit),
+            opcode!(0x12, ill, Implicit),
+            opcode!(0x22, ill, Implicit),
+            opcode!(0x32, ill, Implicit),
+            opcode!(0x42, ill, Implicit),
+            opcode!(0x52, ill, Implicit),
+            opcode!(0x62, ill, Implicit),
+            opcode!(0x72, ill, Implicit),
             opcode!(0x82, nop, Immediate),
-            opcode!(0x92, nop, Implicit),
+            opcode!(0x92, ill, Implicit),
             opcode!(0xA2, ldx, Immediate),
-            opcode!(0xB2, nop, Implicit),
+            opcode!(0xB2, ill, Implicit),
             opcode!(0xC2, nop, Immediate),
-            opcode!(0xD2, nop, Implicit),
+            opcode!(0xD2, ill, Implicit),
             opcode!(0xE2, nop, Immediate),
-            opcode!(0xF2, nop, Implicit),
+            opcode!(0xF2, ill, Implicit),
 
             // Codes ending in 3
-            opcode!(0x03, nop, IndirectX),
-            opcode!(0x13, nop, IndirectY),
-            opcode!(0x23, nop, IndirectX),
-            opcode!(0x33, nop, IndirectY),
-            opcode!(0x43, nop, IndirectX),
-            opcode!(0x53, nop, IndirectY),
-            opcode!(0x63, nop, IndirectX),
-            opcode!(0x73, nop, IndirectY),
-            opcode!(0x83, nop, IndirectX),
-            opcode!(0x93, nop, IndirectY),
-            opcode!(0xA3, nop, IndirectX),
-            opcode!(0xB3, nop, IndirectY),
-            opcode!(0xC3, nop, IndirectX),
-            opcode!(0xD3, nop, IndirectY),
-            opcode!(0xE3, nop, IndirectX),
-            opcode!(0xF3, nop, IndirectY),
+            opcode!(0x03, slo, IndirectX),
+            opcode!(0x13, slo, IndirectY),
+            opcode!(0x23, rla, IndirectX),
+            opcode!(0x33, rla, IndirectY),
+            opcode!(0x43, sre, IndirectX),
+            opcode!(0x53, sre, IndirectY),
+            opcode!(0x63, rra, IndirectX),
+            opcode!(0x73, rra, IndirectY),
+            opcode!(0x83, sax, IndirectX),
+            opcode!(0x93, sha, IndirectY),
+            opcode!(0xA3, lax, IndirectX),
+            opcode!(0xB3, lax, IndirectY),
+            opcode!(0xC3, dcp, IndirectX),
+            opcode!(0xD3, dcp, IndirectY),
+            opcode!(0xE3, isc, IndirectX),
+            opcode!(0xF3, isc, IndirectY),
 
             // Codes ending in 4
             opcode!(0x04, nop, ZeroPage),
@@ -201,22 +201,22 @@ lazy_static! {
             opcode!(0xF6, inc, ZeroPageX),
 
             // Codes ending in 7
-            opcode!(0x07, nop, ZeroPage),
-            opcode!(0x17, nop, ZeroPageX),
-            opcode!(0x27, nop, ZeroPage),
-            opcode!(0x37, nop, ZeroPageX),
-            opcode!(0x47, nop, ZeroPage),
-            opcode!(0x57, nop, ZeroPageX),
-            opcode!(0x67, nop, ZeroPage),
-            opcode!(0x77, nop, ZeroPageX),
-            opcode!(0x87, nop, ZeroPage),
-            opcode!(0x97, nop, ZeroPageY),
-            opcode!(0xA7, nop, ZeroPage),
-            opcode!(0xB7, nop, ZeroPageY),
-            opcode!(0xC7, nop, ZeroPage),
-            opcode!(0xD7, nop, ZeroPageX),
-            opcode!(0xE7, nop, ZeroPage),
-            opcode!(0xF7, nop, ZeroPageX),
+            opcode!(0x07, slo, ZeroPage),
+            opcode!(0x17, slo, ZeroPageX),
+            opcode!(0x27, rla, ZeroPage),
+            opcode!(0x37, rla, ZeroPageX),
+            opcode!(0x47, sre, ZeroPage),
+            opcode!(0x57, sre, ZeroPageX),
+            opcode!(0x67, rra, ZeroPage),
+            opcode!(0x77, rra, ZeroPageX),
+            opcode!(0x87, sax, ZeroPage),
+            opcode!(0x97, sax, ZeroPageY),
+            opcode!(0xA7, lax, ZeroPage),
+            opcode!(0xB7, lax, ZeroPageY),
+            opcode!(0xC7, dcp, ZeroPage),
+            opcode!(0xD7, dcp, ZeroPageX),
+            opcode!(0xE7, isc, ZeroPage),
+            opcode!(0xF7, isc, ZeroPageX),
 
             // Codes ending in 8
             opcode!(0x08, php, Implicit),
@@ -273,22 +273,22 @@ lazy_static! {
             opcode!(0xFA, nop, Implicit),
 
             // Codes ending in B
-            opcode!(0x0B, nop, Immediate),
-            opcode!(0x1B, nop, AbsoluteY),
-            opcode!(0x2B, nop, Immediate),
-            opcode!(0x3B, nop, AbsoluteY),
-            opcode!(0x4B, nop, Immediate),
-            opcode!(0x5B, nop, AbsoluteY),
-            opcode!(0x6B, nop, Immediate),
-            opcode!(0x7B, nop, AbsoluteY),
-            opcode!(0x8B, nop, Immediate),
-            opcode!(0x9B, nop, AbsoluteY),
-            opcode!(0xAB, nop, Immediate),
-            opcode!(0xBB, nop, AbsoluteY),
-            opcode!(0xCB, nop, Immediate),
-            opcode!(0xDB, nop, AbsoluteY),
-            opcode!(0xEB, nop, Immediate),
-            opcode!(0xFB, nop, AbsoluteY),
+            opcode!(0x0B, anc, Immediate),
+            opcode!(0x1B, slo, AbsoluteY),
+            opcode!(0x2B, anc, Immediate),
+            opcode!(0x3B, rla, AbsoluteY),
+            opcode!(0x4B, alr, Immediate),
+            opcode!(0x5B, sre, AbsoluteY),
+            opcode!(0x6B, arr, Immediate),
+            opcode!(0x7B, rra, AbsoluteY),
+            opcode!(0x8B, ane, Immediate),
+            opcode!(0x9B, tas, AbsoluteY),
+            opcode!(0xAB, lxa, Immediate),
+            opcode!(0xBB, las, AbsoluteY),
+            opcode!(0xCB, sbx, Immediate),
+            opcode!(0xDB, dcp, AbsoluteY),
+            opcode!(0xEB, sbc, Immediate),
+            opcode!(0xFB, isc, AbsoluteY),
 
             // Codes ending in C
             opcode!(0x0C, nop, Absolute),
@@ -300,7 +300,7 @@ lazy_static! {
             opcode!(0x6C, jmp, Indirect),
             opcode!(0x7C, nop, AbsoluteX),
             opcode!(0x8C, sty, Absolute),
-            opcode!(0x9C, nop, AbsoluteX),
+            opcode!(0x9C, ill, AbsoluteX),
             opcode!(0xAC, ldy, Absolute),
             opcode!(0xBC, ldy, AbsoluteX),
             opcode!(0xCC, cpy, Absolute),
@@ -337,7 +337,7 @@ lazy_static! {
             opcode!(0x6E, ror, Absolute),
             opcode!(0x7E, ror, AbsoluteX),
             opcode!(0x8E, stx, Absolute),
-            opcode!(0x9E, nop, AbsoluteX),
+            opcode!(0x9E, ill, AbsoluteX),
             opcode!(0xAE, ldx, Absolute),
             opcode!(0xBE, ldx, AbsoluteY),
             opcode!(0xCE, dec, Absolute),
@@ -346,22 +346,22 @@ lazy_static! {
             opcode!(0xFE, inc, AbsoluteX),
 
             // Codes endding in F
-            opcode!(0x0F, nop, Absolute),
-            opcode!(0x1F, nop, AbsoluteX),
-            opcode!(0x2F, nop, Absolute),
-            opcode!(0x3F, nop, AbsoluteX),
-            opcode!(0x4F, nop, Absolute),
-            opcode!(0x5F, nop, AbsoluteX),
-            opcode!(0x6F, nop, Absolute),
-            opcode!(0x7F, nop, AbsoluteX),
-            opcode!(0x8F, nop, Absolute),
-            opcode!(0x9F, nop, AbsoluteX),
-            opcode!(0xAF, nop, Absolute),
-            opcode!(0xBF, nop, AbsoluteY),
-            opcode!(0xCF, nop, Absolute),
-            opcode!(0xDF, nop, AbsoluteX),
-            opcode!(0xEF, nop, Absolute),
-            opcode!(0xFF, nop, AbsoluteX),
+            opcode!(0x0F, slo, Absolute),
+            opcode!(0x1F, slo, AbsoluteX),
+            opcode!(0x2F, rla, Absolute),
+            opcode!(0x3F, rla, AbsoluteX),
+            opcode!(0x4F, sre, Absolute),
+            opcode!(0x5F, sre, AbsoluteX),
+            opcode!(0x6F, rra, Absolute),
+            opcode!(0x7F, rra, AbsoluteX),
+            opcode!(0x8F, sax, Absolute),
+            opcode!(0x9F, sha, AbsoluteX),
+            opcode!(0xAF, lax, Absolute),
+            opcode!(0xBF, lax, AbsoluteY),
+            opcode!(0xCF, dcp, Absolute),
+            opcode!(0xDF, dcp, AbsoluteX),
+            opcode!(0xEF, isc, Absolute),
+            opcode!(0xFF, isc, AbsoluteX),
         ];
 
         // Turn list of codes into opcode lookup table
@@ -399,10 +399,25 @@ impl Default for OpCodeTableEntry {
 }
 
 const fn is_legal(code: u8, method: &str) -> bool {
-    if eq_str(method, "nop") {
-        code == 0xEA
-    } else {
-        true
+    match method {
+        _ if eq_str(method, "nop") => code == 0xEA,
+        _ if eq_str(method, "ill") => false,
+        _ if eq_str(method, "sax") => false,
+        _ if eq_str(method, "dcp") => false,
+        _ if eq_str(method, "lax") => false,
+        _ if eq_str(method, "isc") => false,
+        _ if eq_str(method, "sla") => false,
+        _ if eq_str(method, "slo") => false,
+        _ if eq_str(method, "rla") => false,
+        _ if eq_str(method, "sre") => false,
+        _ if eq_str(method, "rra") => false,
+        _ if eq_str(method, "sha") => false,
+        _ if eq_str(method, "anc") => false,
+        _ if eq_str(method, "alr") => false,
+        _ => match code {
+            0xEB => false,
+            _ => true,
+        },
     }
 }
 
@@ -1102,3 +1117,84 @@ fn txs<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
 fn sei<AM: AddressModeImpl>(_ctx: &mut Context<AM>) {}
 
 fn nop<AM: AddressModeImpl>(_ctx: &mut Context<AM>) {}
+
+// Illegal Instructions
+
+fn ill<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    panic!("Illegal Opcode {:02X}", ctx.bus.read_u8(ctx.addr));
+}
+
+fn lax<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    lda(ctx);
+    ldx(ctx);
+}
+
+fn sax<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    ctx.store_operand(ctx.cpu.a & ctx.cpu.x);
+}
+
+fn dcp<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    dec(ctx);
+    cmp(ctx);
+}
+
+fn isc<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    inc(ctx);
+    sbc(ctx);
+}
+
+fn slo<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    asl(ctx);
+    ora(ctx);
+}
+
+fn rla<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    rol(ctx);
+    and(ctx);
+}
+
+fn sha<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    unimplemented!();
+}
+
+fn rra<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    ror(ctx);
+    adc(ctx);
+}
+
+fn sre<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    lsr(ctx);
+    eor(ctx);
+}
+
+fn alr<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    unimplemented!();
+}
+
+fn anc<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    unimplemented!();
+}
+
+fn arr<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    unimplemented!();
+}
+
+fn ane<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    unimplemented!();
+}
+
+fn tas<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    unimplemented!();
+}
+
+fn lxa<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    unimplemented!();
+}
+
+fn las<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    unimplemented!();
+}
+
+fn sbx<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
+    unimplemented!();
+}
