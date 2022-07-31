@@ -1,4 +1,5 @@
 use anyhow::Result;
+use konst::eq_str;
 
 use std::marker::PhantomData;
 
@@ -32,6 +33,10 @@ impl Operation {
     pub fn format(self, cpu: &Cpu, bus: &Bus) -> String {
         (self.table_entry.format_fn)(cpu, bus, self.addr)
     }
+
+    pub fn is_legal(&self) -> bool {
+        self.table_entry.legal
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -41,6 +46,7 @@ macro_rules! opcode {
     ($code: literal, $method: ident, $address_mode: ident) => {
         OpCodeTableEntry {
             code: $code,
+            legal: is_legal($code, stringify!($method)),
             operand_size: $address_mode::OPERAND_SIZE,
             execute_fn: |cpu, bus, addr| {
                 $method(&mut Context::<$address_mode> {
@@ -61,11 +67,14 @@ macro_rules! opcode {
     };
 }
 
+// TODOS:
+// 0x00 is BRK not HLT
+
 lazy_static! {
     static ref OPCODE_TABLE: [OpCodeTableEntry; 0x100] = {
         const OPCODE_LIST: &[OpCodeTableEntry] = &[
             // Codes ending in 0
-            opcode!(0x00, hlt, Implicit),  // TODO: It's BRK not HLT
+            opcode!(0x00, hlt, Implicit),
             opcode!(0x10, bpl, Relative),
             opcode!(0x20, jsr, Absolute),
             opcode!(0x30, bmi, Relative),
@@ -73,7 +82,7 @@ lazy_static! {
             opcode!(0x50, bvc, Relative),
             opcode!(0x60, rts, Implicit),
             opcode!(0x70, bvs, Relative),
-            opcode!(0x80, nop, Implicit),
+            opcode!(0x80, nop, Immediate),
             opcode!(0x90, bcc, Relative),
             opcode!(0xA0, ldy, Immediate),
             opcode!(0xB0, bcs, Relative),
@@ -104,16 +113,40 @@ lazy_static! {
             opcode!(0xA2, ldx, Immediate),
 
             // Codes ending in 3
-            // ... only illegal opcodes
+            opcode!(0x03, nop, IndirectX),
+            opcode!(0x13, nop, IndirectY),
+            opcode!(0x23, nop, IndirectX),
+            opcode!(0x33, nop, IndirectY),
+            opcode!(0x43, nop, IndirectX),
+            opcode!(0x53, nop, IndirectY),
+            opcode!(0x63, nop, IndirectX),
+            opcode!(0x73, nop, IndirectY),
+            opcode!(0x83, nop, IndirectX),
+            opcode!(0x93, nop, IndirectY),
+            opcode!(0xA3, nop, IndirectX),
+            opcode!(0xB3, nop, IndirectY),
+            opcode!(0xC3, nop, IndirectX),
+            opcode!(0xD3, nop, IndirectY),
+            opcode!(0xE3, nop, IndirectX),
+            opcode!(0xF3, nop, IndirectY),
 
             // Codes ending in 4
+            opcode!(0x04, nop, ZeroPage),
+            opcode!(0x14, nop, ZeroPageX),
             opcode!(0x24, bit, ZeroPage),
+            opcode!(0x34, nop, ZeroPageX),
+            opcode!(0x44, nop, ZeroPage),
+            opcode!(0x54, nop, ZeroPageX),
+            opcode!(0x64, nop, ZeroPage),
+            opcode!(0x74, nop, ZeroPageX),
             opcode!(0x84, sty, ZeroPage),
             opcode!(0x94, sty, ZeroPageX),
             opcode!(0xA4, ldy, ZeroPage),
             opcode!(0xB4, ldy, ZeroPageX),
             opcode!(0xC4, cpy, ZeroPage),
+            opcode!(0xD4, nop, ZeroPageX),
             opcode!(0xE4, cpx, ZeroPage),
+            opcode!(0xF4, nop, ZeroPageX),
 
             // Codes ending in 5
             opcode!(0x05, ora, ZeroPage),
@@ -212,14 +245,22 @@ lazy_static! {
             // ... only illegal opcodes
 
             // Codes ending in C
+            opcode!(0x0C, nop, Absolute),
+            opcode!(0x1C, nop, AbsoluteX),
             opcode!(0x2C, bit, Absolute),
+            opcode!(0x3C, nop, AbsoluteX),
             opcode!(0x4C, jmp, Absolute),
+            opcode!(0x5C, nop, AbsoluteX),
             opcode!(0x6C, jmp, Indirect),
+            opcode!(0x7C, nop, AbsoluteX),
             opcode!(0x8C, sty, Absolute),
+            opcode!(0x9C, nop, AbsoluteX),
             opcode!(0xAC, ldy, Absolute),
             opcode!(0xBC, ldy, AbsoluteX),
             opcode!(0xCC, cpy, Absolute),
+            opcode!(0xDC, nop, AbsoluteX),
             opcode!(0xEC, cpx, Absolute),
+            opcode!(0xFC, nop, AbsoluteX),
 
 
             //
@@ -271,6 +312,7 @@ lazy_static! {
 #[derive(Copy, Clone)]
 struct OpCodeTableEntry {
     pub code: u8,
+    pub legal: bool,
     pub operand_size: usize,
     pub execute_fn: fn(cpu: &mut Cpu, bus: &mut Bus, addr: u16),
     pub format_fn: fn(cpu: &Cpu, bus: &Bus, addr: u16) -> String,
@@ -280,10 +322,19 @@ impl Default for OpCodeTableEntry {
     fn default() -> Self {
         Self {
             code: Default::default(),
+            legal: false,
             operand_size: 0,
             execute_fn: |_, _, _| unimplemented!(),
             format_fn: |_, _, _| "N/A".to_string(),
         }
+    }
+}
+
+const fn is_legal(code: u8, method: &str) -> bool {
+    if eq_str(method, "nop") {
+        code == 0xEA
+    } else {
+        true
     }
 }
 

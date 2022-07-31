@@ -36,6 +36,7 @@ impl System {
                     .bus
                     .slice(self.cpu.program_counter, operation.size())
                     .to_vec(),
+                legal: operation.is_legal(),
                 opcode_str: operation.format(&self.cpu, &self.bus),
                 a: self.cpu.a,
                 x: self.cpu.x,
@@ -47,6 +48,7 @@ impl System {
             Ok(Trace {
                 pc: self.cpu.program_counter,
                 opcode_raw: vec![self.bus.read_u8(self.cpu.program_counter)],
+                legal: false,
                 opcode_str: "N/A".to_string(),
                 a: self.cpu.a,
                 x: self.cpu.x,

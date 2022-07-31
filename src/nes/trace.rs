@@ -10,6 +10,7 @@ use super::cpu::StatusFlags;
 pub struct Trace {
     pub pc: u16,
     pub opcode_raw: Vec<u8>,
+    pub legal: bool,
     pub opcode_str: String,
     pub a: u8,
     pub x: u8,
@@ -22,6 +23,7 @@ impl PartialEq for Trace {
     fn eq(&self, other: &Self) -> bool {
         self.pc == other.pc
             && self.opcode_raw == other.opcode_raw
+            && self.legal == other.legal
             && self.a == other.a
             && self.x == other.x
             && self.y == other.y
@@ -30,7 +32,8 @@ impl PartialEq for Trace {
     }
 }
 
-static TRACE_REGEX: &str = "(.{4})  (.{8})  (.{30})  A:(.{2}) X:(.{2}) Y:(.{2}) P:(.{2}) SP:(.{2})";
+static TRACE_REGEX: &str =
+    "(.{4})  (.{8}) ([ *])(.{30})  A:(.{2}) X:(.{2}) Y:(.{2}) P:(.{2}) SP:(.{2})";
 
 impl Display for Trace {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -40,11 +43,19 @@ impl Display for Trace {
             .map(|c| format!("{c:02X}"))
             .collect::<Vec<String>>()
             .join(" ");
-
+        let legal_str = if self.legal { " " } else { "*" };
         write!(
             f,
-            "{:04X}  {:<8}  {:<30}  A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
-            self.pc, opcode_raw_str, self.opcode_str, self.a, self.x, self.y, self.p, self.sp
+            "{:04X}  {:<8} {}{:<30}  A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
+            self.pc,
+            opcode_raw_str,
+            legal_str,
+            self.opcode_str,
+            self.a,
+            self.x,
+            self.y,
+            self.p,
+            self.sp
         )
     }
 }
@@ -55,7 +66,7 @@ impl Trace {
 
         let captures = re
             .captures(trace_str)
-            .ok_or_else(|| anyhow!("Not a valid trace string"))?;
+            .ok_or_else(|| anyhow!("Not a valid trace string {}", trace_str))?;
 
         Ok(Trace {
             pc: u16::from_str_radix(&captures[1], 16)?,
@@ -64,12 +75,13 @@ impl Trace {
                 .split(' ')
                 .map(|s| u8::from_str_radix(s, 16))
                 .collect::<Result<Vec<u8>, ParseIntError>>()?,
-            opcode_str: captures[3].trim().to_string(),
-            a: u8::from_str_radix(&captures[4], 16)?,
-            x: u8::from_str_radix(&captures[5], 16)?,
-            y: u8::from_str_radix(&captures[6], 16)?,
-            p: StatusFlags::from_bits_truncate(u8::from_str_radix(&captures[7], 16)?),
-            sp: u8::from_str_radix(&captures[8], 16)?,
+            legal: !captures[3].eq("*"),
+            opcode_str: captures[4].trim().to_string(),
+            a: u8::from_str_radix(&captures[5], 16)?,
+            x: u8::from_str_radix(&captures[6], 16)?,
+            y: u8::from_str_radix(&captures[7], 16)?,
+            p: StatusFlags::from_bits_truncate(u8::from_str_radix(&captures[8], 16)?),
+            sp: u8::from_str_radix(&captures[9], 16)?,
         })
     }
 }
@@ -89,6 +101,7 @@ mod test {
         let trace = Trace {
             pc: 0xC000,
             opcode_raw: vec![0x4C, 0xF5, 0xC5],
+            legal: true,
             opcode_str: "JMP $C5F5".to_string(),
             a: 0,
             x: 0,
