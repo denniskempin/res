@@ -49,12 +49,9 @@ pub fn compare_to_log(mut system: System, log_file: &str, goal_count: usize) {
         }
 
         let expected_trace = Trace::from_log_line(&line.unwrap()).unwrap();
-        println!("{i:6}: {expected_trace}");
+        println!("{i:6} Exp: {expected_trace}");
         let actual_trace = system.trace().unwrap();
-        println!("{i:6}: {actual_trace}");
-        if actual_trace.opcode_raw[0] == 0x6C {
-            println!("Debug now");
-        }
+        println!("{i:6} Act: {actual_trace}");
         assert_eq!(expected_trace, actual_trace);
         system.tick().unwrap();
     }

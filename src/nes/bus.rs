@@ -4,10 +4,20 @@ use anyhow::Result;
 ////////////////////////////////////////////////////////////////////////////////
 // Bus
 
-#[derive(Default)]
 pub struct Bus {
     pub ram: RamDevice,
     pub rom: RomDevice,
+    pub dummy: Vec<u8>,
+}
+
+impl Default for Bus {
+    fn default() -> Self {
+        Self {
+            ram: Default::default(),
+            rom: Default::default(),
+            dummy: vec![0; 16],
+        }
+    }
 }
 
 impl Bus {
@@ -19,8 +29,10 @@ impl Bus {
             RomDevice::START_ADDR..=RomDevice::END_ADDR => {
                 self.rom.slice(addr - RomDevice::START_ADDR, length)
             }
-            _ => &[0, 0, 0],
-            //_ => unimplemented!("Invalid read from {addr}"),
+            _ => {
+                println!("Warning. Illegal read from: ${:04X}", addr);
+                &self.dummy[0..length]
+            }
         }
     }
 
@@ -32,7 +44,10 @@ impl Bus {
             RomDevice::START_ADDR..=RomDevice::END_ADDR => {
                 self.rom.mut_slice(addr - RomDevice::START_ADDR, length)
             }
-            _ => unimplemented!("Invalid write to {addr}"),
+            _ => {
+                println!("Warning. Illegal write to: ${:04X}", addr);
+                &mut self.dummy[0..length]
+            }
         }
     }
 
