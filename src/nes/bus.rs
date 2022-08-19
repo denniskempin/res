@@ -7,7 +7,6 @@ use anyhow::Result;
 pub struct Bus {
     pub ram: RamDevice,
     pub rom: RomDevice,
-    pub dummy: Vec<u8>,
 }
 
 impl Default for Bus {
@@ -15,64 +14,33 @@ impl Default for Bus {
         Self {
             ram: Default::default(),
             rom: Default::default(),
-            dummy: vec![0; 16],
         }
     }
 }
 
 impl Bus {
-    pub fn slice(&self, addr: u16, length: usize) -> &[u8] {
-        match addr {
-            RamDevice::START_ADDR..=RamDevice::END_ADDR => {
-                self.ram.slice(addr - RamDevice::START_ADDR, length)
-            }
-            RomDevice::START_ADDR..=RomDevice::END_ADDR => {
-                self.rom.slice(addr - RomDevice::START_ADDR, length)
-            }
-            _ => {
-                println!("Warning. Illegal read from: ${:04X}", addr);
-                &self.dummy[0..length]
-            }
-        }
-    }
-
-    pub fn mut_slice(&mut self, addr: u16, length: usize) -> &mut [u8] {
-        match addr {
-            RamDevice::START_ADDR..=RamDevice::END_ADDR => {
-                self.ram.mut_slice(addr - RamDevice::START_ADDR, length)
-            }
-            RomDevice::START_ADDR..=RomDevice::END_ADDR => {
-                self.rom.mut_slice(addr - RomDevice::START_ADDR, length)
-            }
-            _ => {
-                println!("Warning. Illegal write to: ${:04X}", addr);
-                &mut self.dummy[0..length]
-            }
-        }
-    }
-
-    pub fn read_u8(&self, addr: u16) -> u8 {
-        return self.slice(addr, 1)[0];
+    pub fn slice(&self, addr: u16, length: u16) -> impl Iterator<Item = u8> + '_ {
+        (addr..(addr + length)).map(|addr| self.read(addr))
     }
 
     pub fn read_u16(&self, addr: u16) -> u16 {
-        // u16 reads wrap pages?
-        // reading word from  0x02FF will read
-        // 0x02FF and 0x0100
-        // Same with zero page reads.
-        //
-        // Supposedly zero page reads never cross page boundaries,
-        // but I am observing the same for indirect address mode.
-        //
-        // Wow. That's a CPU bug. Amazing that I am running into this
-        // so early on. Indirect addressing should allow crossing
-        // of page boundaries, but does not. Later versions of the CPU
-        // fix this. Amazing.
-        u16::from_le_bytes(self.slice(addr, 2).try_into().unwrap())
+        u16::from_le_bytes([self.read(addr), self.read(addr + 1)])
     }
 
-    pub fn write_u8(&mut self, addr: u16, value: u8) {
-        self.mut_slice(addr, 1)[0] = value;
+    pub fn read(&self, addr: u16) -> u8 {
+        match addr {
+            RamDevice::START_ADDR..=RamDevice::END_ADDR => self.ram.read(addr),
+            RomDevice::START_ADDR..=RomDevice::END_ADDR => self.rom.read(addr),
+            _ => panic!("Warning. Illegal read from: ${:04X}", addr),
+        }
+    }
+
+    pub fn write(&mut self, addr: u16, value: u8) {
+        match addr {
+            RamDevice::START_ADDR..=RamDevice::END_ADDR => self.ram.write(addr, value),
+            RomDevice::START_ADDR..=RomDevice::END_ADDR => self.rom.write(addr, value),
+            _ => panic!("Warning. Illegal write to: ${:04X}", addr),
+        }
     }
 }
 
@@ -95,6 +63,16 @@ impl RamDevice {
     pub fn mut_slice(&mut self, addr: u16, length: usize) -> &mut [u8] {
         let addr = addr as usize & 0b0000_0111_1111_1111;
         &mut self.ram[addr..(addr + length)]
+    }
+
+    pub fn read(&self, addr: u16) -> u8 {
+        let addr = addr as usize & 0b0000_0111_1111_1111;
+        self.ram[addr]
+    }
+
+    pub fn write(&mut self, addr: u16, value: u8) {
+        let addr = addr as usize & 0b0000_0111_1111_1111;
+        self.ram[addr] = value;
     }
 }
 
@@ -148,6 +126,15 @@ impl RomDevice {
     pub const START_ADDR: u16 = 0x8000;
     pub const END_ADDR: u16 = 0xFFFF;
 
+    pub fn read(&self, addr: u16) -> u8 {
+        let addr = addr as usize % self.prg.len();
+        self.prg[addr]
+    }
+
+    pub fn write(&mut self, _: u16, _: u8) {
+        panic!("Illegal write to rom device.");
+    }
+
     pub fn slice(&self, addr: u16, length: usize) -> &[u8] {
         let addr = addr as usize % self.prg.len();
         &self.prg[addr..(addr + length)]
@@ -155,18 +142,5 @@ impl RomDevice {
 
     pub fn mut_slice(&mut self, _: u16, _: usize) -> &mut [u8] {
         panic!("Illegal write to rom device.");
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// Utilities
-
-trait SliceWithLength {
-    fn slice(&self, index: usize, length: usize) -> Self;
-}
-
-impl SliceWithLength for &[u8] {
-    fn slice(&self, index: usize, length: usize) -> Self {
-        &self[index..(index + length)]
     }
 }

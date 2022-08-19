@@ -21,7 +21,7 @@ impl Operation {
     }
 
     pub fn read(bus: &Bus, addr: u16) -> Result<Operation> {
-        let raw_opcode = bus.read_u8(addr);
+        let raw_opcode = bus.read(addr);
         let table_entry = OPCODE_TABLE[raw_opcode as usize];
         Ok(Operation { addr, table_entry })
     }
@@ -466,7 +466,7 @@ impl AddressModeImpl for Immediate {
     }
 
     fn load(_cpu: &Cpu, bus: &Bus, addr: u16) -> u8 {
-        bus.read_u8(addr + 1)
+        bus.read(addr + 1)
     }
 
     fn store(_cpu: &mut Cpu, _bus: &mut Bus, _addr: u16, _value: u8) {
@@ -578,7 +578,7 @@ impl AddressModeImpl for ZeroPage {
     const OPERAND_SIZE: usize = 1;
 
     fn addr(_cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
-        bus.read_u8(addr + 1) as u16
+        bus.read(addr + 1) as u16
     }
 
     fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
@@ -595,13 +595,13 @@ impl AddressModeImpl for ZeroPageX {
     const OPERAND_SIZE: usize = 1;
 
     fn addr(cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
-        bus.read_u8(addr + 1).wrapping_add(cpu.x) as u16
+        bus.read(addr + 1).wrapping_add(cpu.x) as u16
     }
 
     fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
         return format!(
             " {:02X}+X ={:04X} @ {:02X}",
-            bus.read_u8(addr + 1),
+            bus.read(addr + 1),
             Self::addr(cpu, bus, addr),
             Self::load(cpu, bus, addr)
         );
@@ -613,13 +613,13 @@ impl AddressModeImpl for ZeroPageY {
     const OPERAND_SIZE: usize = 1;
 
     fn addr(cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
-        bus.read_u8(addr + 1).wrapping_add(cpu.y) as u16
+        bus.read(addr + 1).wrapping_add(cpu.y) as u16
     }
 
     fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
         return format!(
             " {:02X}+Y ={:04X} @ {:02X}",
-            bus.read_u8(addr + 1),
+            bus.read(addr + 1),
             Self::addr(cpu, bus, addr),
             Self::load(cpu, bus, addr)
         );
@@ -631,7 +631,7 @@ impl AddressModeImpl for Relative {
     const OPERAND_SIZE: usize = 1;
 
     fn addr(_cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
-        let delta = bus.read_u8(addr + 1) as i8 as i16;
+        let delta = bus.read(addr + 1) as i8 as i16;
         let base_addr = addr + 1 + Self::OPERAND_SIZE as u16;
         if delta > 0 {
             base_addr.wrapping_add(delta.unsigned_abs())
@@ -641,7 +641,7 @@ impl AddressModeImpl for Relative {
     }
 
     fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
-        let relative_addr = bus.read_u8(addr + 1) as i8;
+        let relative_addr = bus.read(addr + 1) as i8;
         return format!(
             " {:+02X} ={:04X} @ {:02X}",
             relative_addr,
@@ -660,9 +660,9 @@ impl AddressModeImpl for Indirect {
         let bytes = if indirect_addr & 0x00FF == 0x00FF {
             // CPU Bug: Address wraps around inside page.
             let page = indirect_addr & 0xFF00;
-            [bus.read_u8(indirect_addr), bus.read_u8(page)]
+            [bus.read(indirect_addr), bus.read(page)]
         } else {
-            [bus.read_u8(indirect_addr), bus.read_u8(indirect_addr + 1)]
+            [bus.read(indirect_addr), bus.read(indirect_addr + 1)]
         };
         u16::from_le_bytes(bytes)
     }
@@ -685,16 +685,16 @@ impl AddressModeImpl for IndirectY {
     fn addr(cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
         // Note: Zero-page address lookup will wrap around from 0xFF to 0x00.
         // TODO: Implement zero page u16 reads in bus
-        let indirect_addr = bus.read_u8(addr + 1);
+        let indirect_addr = bus.read(addr + 1);
         let bytes = [
-            bus.read_u8(indirect_addr as u16),
-            bus.read_u8(indirect_addr.wrapping_add(1) as u16),
+            bus.read(indirect_addr as u16),
+            bus.read(indirect_addr.wrapping_add(1) as u16),
         ];
         u16::from_le_bytes(bytes).wrapping_add(cpu.y as u16)
     }
 
     fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
-        let indirect_addr = bus.read_u8(addr + 1);
+        let indirect_addr = bus.read(addr + 1);
         let indirect = bus.read_u16(indirect_addr as u16);
         return format!(
             " (${:02X})={:04X}+Y ={:04X} @ {:02X}",
@@ -713,16 +713,16 @@ impl AddressModeImpl for IndirectX {
     fn addr(cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
         // Note: Zero-page address lookup will wrap around from 0xFF to 0x00.
         // TODO: Implement zero page u16 reads in bus
-        let indirect_addr = bus.read_u8(addr + 1).wrapping_add(cpu.x);
+        let indirect_addr = bus.read(addr + 1).wrapping_add(cpu.x);
         let bytes = [
-            bus.read_u8(indirect_addr as u16),
-            bus.read_u8(indirect_addr.wrapping_add(1) as u16),
+            bus.read(indirect_addr as u16),
+            bus.read(indirect_addr.wrapping_add(1) as u16),
         ];
         u16::from_le_bytes(bytes)
     }
 
     fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
-        let indirect_addr = bus.read_u8(addr + 1);
+        let indirect_addr = bus.read(addr + 1);
         return format!(
             " (${:02X}+X) ={:04X} @{:02X}",
             indirect_addr,
@@ -739,11 +739,11 @@ trait AddressModeImpl {
     fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String;
 
     fn load(cpu: &Cpu, bus: &Bus, addr: u16) -> u8 {
-        bus.read_u8(Self::addr(cpu, bus, addr))
+        bus.read(Self::addr(cpu, bus, addr))
     }
 
     fn store(cpu: &mut Cpu, bus: &mut Bus, addr: u16, value: u8) {
-        bus.write_u8(Self::addr(cpu, bus, addr), value)
+        bus.write(Self::addr(cpu, bus, addr), value)
     }
 }
 
@@ -1127,7 +1127,7 @@ fn nop<AM: AddressModeImpl>(_ctx: &mut Context<AM>) {}
 // Illegal Instructions
 
 fn ill<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    panic!("Illegal Opcode {:02X}", ctx.bus.read_u8(ctx.addr));
+    panic!("Illegal Opcode {:02X}", ctx.bus.read(ctx.addr));
 }
 
 fn lax<AM: AddressModeImpl>(ctx: &mut Context<AM>) {

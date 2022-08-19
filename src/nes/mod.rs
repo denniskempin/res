@@ -34,8 +34,8 @@ impl System {
                 pc: self.cpu.program_counter,
                 opcode_raw: self
                     .bus
-                    .slice(self.cpu.program_counter, operation.size())
-                    .to_vec(),
+                    .slice(self.cpu.program_counter, operation.size() as u16)
+                    .collect(),
                 legal: operation.is_legal(),
                 opcode_str: operation.format(&self.cpu, &self.bus),
                 a: self.cpu.a,
@@ -47,7 +47,7 @@ impl System {
         } else {
             Ok(Trace {
                 pc: self.cpu.program_counter,
-                opcode_raw: vec![self.bus.read_u8(self.cpu.program_counter)],
+                opcode_raw: vec![self.bus.read(self.cpu.program_counter)],
                 legal: false,
                 opcode_str: "N/A".to_string(),
                 a: self.cpu.a,

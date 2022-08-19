@@ -20,8 +20,8 @@ pub fn test_basic_program() {
         0x00, // BRK
     ]);
     system.execute_until_halt().unwrap();
-    assert_eq!(system.bus.read_u8(0x20_u16), 0x10);
-    assert_eq!(system.bus.read_u8(0x21_u16), 0x12);
+    assert_eq!(system.bus.read(0x20_u16), 0x10);
+    assert_eq!(system.bus.read(0x21_u16), 0x12);
     assert_eq!(system.cpu.a, 0x11);
     assert_eq!(system.cpu.y, 0x13);
 }

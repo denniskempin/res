@@ -70,29 +70,22 @@ impl Cpu {
     }
 
     fn stack_push(&mut self, bus: &mut Bus, value: u8) {
-        bus.write_u8(Self::STACK_ADDR + self.sp as u16, value);
+        bus.write(Self::STACK_ADDR + self.sp as u16, value);
         self.sp -= 1;
     }
 
     fn stack_pop(&mut self, bus: &mut Bus) -> u8 {
         self.sp += 1;
-        bus.read_u8(Self::STACK_ADDR + self.sp as u16)
+        bus.read(Self::STACK_ADDR + self.sp as u16)
     }
 
-    pub fn read_stack<'a>(&self, bus: &'a Bus) -> &'a [u8] {
-        let stack_entries = 0xFF - self.sp;
-        bus.slice(
-            Self::STACK_ADDR + self.sp as u16 + 1,
-            stack_entries as usize,
-        )
+    pub fn read_stack<'a>(&self, bus: &'a Bus) -> impl Iterator<Item = u8> + 'a {
+        let stack_entries = 0xFF_u16 - self.sp as u16;
+        bus.slice(Self::STACK_ADDR + self.sp as u16 + 1, stack_entries)
     }
 
     pub fn print_stack(&self, bus: &Bus) {
-        let formatted: Vec<String> = self
-            .read_stack(bus)
-            .iter()
-            .map(|s| format!("{:02X}", s))
-            .collect();
+        let formatted: Vec<String> = self.read_stack(bus).map(|s| format!("{:02X}", s)).collect();
         println!("{:?}", formatted);
     }
 }
