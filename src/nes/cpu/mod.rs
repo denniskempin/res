@@ -4,7 +4,7 @@ use std::{cell::RefCell, rc::Rc};
 
 pub use operations::Operation;
 
-use super::cartridge::Cartridge;
+use super::{apu::Apu, cartridge::Cartridge};
 use anyhow::Result;
 use bitflags::bitflags;
 
@@ -42,12 +42,13 @@ pub struct Cpu {
 
     pub ram: [u8; 0x2000],
     pub cartridge: Rc<RefCell<Cartridge>>,
+    pub apu: Rc<RefCell<Apu>>,
 }
 
 impl Cpu {
     const STACK_ADDR: u16 = 0x0100;
 
-    pub fn new(cartridge: Rc<RefCell<Cartridge>>) -> Self {
+    pub fn new(cartridge: Rc<RefCell<Cartridge>>, apu: Rc<RefCell<Apu>>) -> Self {
         Self {
             a: 0,
             x: 0,
@@ -58,6 +59,7 @@ impl Cpu {
             sp: 0xFD,
             ram: [0; 0x2000],
             cartridge,
+            apu,
         }
     }
 
@@ -109,6 +111,7 @@ impl Cpu {
         match addr {
             RAM_START_ADDR..=RAM_END_ADDR => self.ram[addr as usize & 0b0000_0111_1111_1111],
             Cartridge::START_ADDR..=Cartridge::END_ADDR => self.cartridge.borrow().read(addr),
+            Apu::START_ADDR..=Apu::END_ADDR => self.apu.borrow().read(addr),
             _ => panic!("Warning. Illegal read from: ${:04X}", addr),
         }
     }
@@ -122,6 +125,7 @@ impl Cpu {
             Cartridge::START_ADDR..=Cartridge::END_ADDR => {
                 self.cartridge.borrow_mut().write(addr, value)
             }
+            Apu::START_ADDR..=Apu::END_ADDR => self.apu.borrow_mut().write(addr, value),
             _ => panic!("Warning. Illegal write to: ${:04X}", addr),
         }
     }

@@ -1,3 +1,4 @@
+pub mod apu;
 pub mod cartridge;
 pub mod cpu;
 pub mod trace;
@@ -8,6 +9,7 @@ use std::fs;
 use std::path::Path;
 use std::rc::Rc;
 
+use self::apu::Apu;
 use self::cartridge::Cartridge;
 use self::cpu::Cpu;
 use self::cpu::Operation;
@@ -16,14 +18,17 @@ use self::trace::Trace;
 pub struct System {
     pub cpu: Cpu,
     pub cartridge: Rc<RefCell<Cartridge>>,
+    pub apu: Rc<RefCell<Apu>>,
     pub clock: u64,
 }
 
 impl Default for System {
     fn default() -> Self {
         let cartridge = Rc::new(RefCell::new(Cartridge::default()));
+        let apu = Rc::new(RefCell::new(Apu::default()));
         Self {
-            cpu: Cpu::new(cartridge.clone()),
+            cpu: Cpu::new(cartridge.clone(), apu.clone()),
+            apu,
             cartridge,
             clock: 0,
         }
