@@ -1,11 +1,8 @@
 use anyhow::Result;
 use konst::eq_str;
 
-use std::marker::PhantomData;
-
 use super::Cpu;
 use super::StatusFlags;
-use crate::nes::bus::Bus;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Operation
@@ -20,18 +17,18 @@ impl Operation {
         self.table_entry.operand_size + 1
     }
 
-    pub fn read(bus: &Bus, addr: u16) -> Result<Operation> {
-        let raw_opcode = bus.read(addr);
+    pub fn read(cpu: &Cpu, addr: u16) -> Result<Operation> {
+        let raw_opcode = cpu.read(addr);
         let table_entry = OPCODE_TABLE[raw_opcode as usize];
         Ok(Operation { addr, table_entry })
     }
 
-    pub fn execute(&self, cpu: &mut Cpu, bus: &mut Bus) {
-        (self.table_entry.execute_fn)(cpu, bus, self.addr);
+    pub fn execute(&self, cpu: &mut Cpu) {
+        (self.table_entry.execute_fn)(cpu, self.addr);
     }
 
-    pub fn format(self, cpu: &Cpu, bus: &Bus) -> String {
-        (self.table_entry.format_fn)(cpu, bus, self.addr)
+    pub fn format(self, cpu: &Cpu) -> String {
+        (self.table_entry.format_fn)(cpu, self.addr)
     }
 
     pub fn is_legal(&self) -> bool {
@@ -48,19 +45,12 @@ macro_rules! opcode {
             code: $code,
             legal: is_legal($code, stringify!($method)),
             operand_size: $address_mode::OPERAND_SIZE,
-            execute_fn: |cpu, bus, addr| {
-                $method(&mut Context::<$address_mode> {
-                    cpu,
-                    bus,
-                    addr,
-                    phantom: PhantomData,
-                })
-            },
-            format_fn: |cpu, bus, addr| {
+            execute_fn: |cpu, addr| $method::<$address_mode>(cpu, addr),
+            format_fn: |cpu, addr| {
                 format!(
                     "{}{}",
                     stringify!($method).to_uppercase(),
-                    $address_mode::format(cpu, bus, addr)
+                    $address_mode::format(cpu, addr)
                 )
             },
         }
@@ -382,8 +372,8 @@ struct OpCodeTableEntry {
     pub code: u8,
     pub legal: bool,
     pub operand_size: usize,
-    pub execute_fn: fn(cpu: &mut Cpu, bus: &mut Bus, addr: u16),
-    pub format_fn: fn(cpu: &Cpu, bus: &Bus, addr: u16) -> String,
+    pub execute_fn: fn(cpu: &mut Cpu, addr: u16),
+    pub format_fn: fn(cpu: &Cpu, addr: u16) -> String,
 }
 
 impl Default for OpCodeTableEntry {
@@ -392,8 +382,8 @@ impl Default for OpCodeTableEntry {
             code: Default::default(),
             legal: false,
             operand_size: 0,
-            execute_fn: |_, _, _| unimplemented!(),
-            format_fn: |_, _, _| "N/A".to_string(),
+            execute_fn: |_, _| unimplemented!(),
+            format_fn: |_, _| "N/A".to_string(),
         }
     }
 }
@@ -419,219 +409,186 @@ const fn is_legal(code: u8, method: &str) -> bool {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Context
-
-/// Context for executing an operation. Allows the operation to load and store
-/// operands regardless of their address mode.
-/// Makes use of monomorphization to build execute_fn's that are optimiezd at
-/// compile time for their address mode and do not require additional branches
-/// or lookups of which mode to use.
-struct Context<'a, AM: AddressModeImpl> {
-    cpu: &'a mut Cpu,
-    bus: &'a mut Bus,
-    addr: u16,
-    phantom: PhantomData<AM>,
-}
-
-impl<AM: AddressModeImpl> Context<'_, AM> {
-    pub fn operand_addr(&self) -> u16 {
-        AM::addr(self.cpu, self.bus, self.addr)
-    }
-
-    pub fn load_operand(&self) -> u8 {
-        AM::load(self.cpu, self.bus, self.addr)
-    }
-
-    pub fn store_operand(&mut self, value: u8) {
-        AM::store(self.cpu, self.bus, self.addr, value)
-    }
-
-    pub fn update_negative_zero_flags(&mut self, value: u8) {
-        self.cpu.status_flags.set(StatusFlags::ZERO, value == 0);
-        self.cpu
-            .status_flags
-            .set(StatusFlags::NEGATIVE, value & 0b1000_0000 != 0);
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
 // Address Modes
 
+trait AddressMode {
+    const OPERAND_SIZE: usize = 0;
+
+    fn addr(cpu: &Cpu, addr: u16) -> u16;
+    fn format(cpu: &Cpu, addr: u16) -> String;
+
+    fn load(cpu: &Cpu, addr: u16) -> u8 {
+        cpu.read(Self::addr(cpu, addr))
+    }
+
+    fn store(cpu: &mut Cpu, addr: u16, value: u8) {
+        cpu.write(Self::addr(cpu, addr), value)
+    }
+}
+
 struct Immediate {}
-impl AddressModeImpl for Immediate {
+impl AddressMode for Immediate {
     const OPERAND_SIZE: usize = 1;
 
-    fn addr(_cpu: &Cpu, _bus: &Bus, _addr: u16) -> u16 {
+    fn addr(_cpu: &Cpu, _addr: u16) -> u16 {
         unimplemented!();
     }
 
-    fn load(_cpu: &Cpu, bus: &Bus, addr: u16) -> u8 {
-        bus.read(addr + 1)
+    fn load(cpu: &Cpu, addr: u16) -> u8 {
+        cpu.read(addr + 1)
     }
 
-    fn store(_cpu: &mut Cpu, _bus: &mut Bus, _addr: u16, _value: u8) {
-        unimplemented!();
-    }
-
-    fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
-        return format!(" #{:02X}", Self::load(cpu, bus, addr));
+    fn format(cpu: &Cpu, addr: u16) -> String {
+        return format!(" #{:02X}", Self::load(cpu, addr));
     }
 }
 
 struct Implicit {}
-impl AddressModeImpl for Implicit {
+impl AddressMode for Implicit {
     const OPERAND_SIZE: usize = 0;
 
-    fn addr(_cpu: &Cpu, _bus: &Bus, _addr: u16) -> u16 {
+    fn addr(_cpu: &Cpu, _addr: u16) -> u16 {
         unimplemented!();
     }
 
-    fn load(_cpu: &Cpu, _bus: &Bus, _addr: u16) -> u8 {
-        unimplemented!();
-    }
-
-    fn store(_cpu: &mut Cpu, _bus: &mut Bus, _addr: u16, _value: u8) {
-        unimplemented!();
-    }
-
-    fn format(_cpu: &Cpu, _bus: &Bus, _addr: u16) -> String {
+    fn format(_cpu: &Cpu, _addr: u16) -> String {
         "".to_string()
     }
 }
 
 struct Acumulator {}
-impl AddressModeImpl for Acumulator {
+impl AddressMode for Acumulator {
     const OPERAND_SIZE: usize = 0;
 
-    fn addr(_cpu: &Cpu, _bus: &Bus, _addr: u16) -> u16 {
+    fn addr(_cpu: &Cpu, _addr: u16) -> u16 {
         unimplemented!();
     }
 
-    fn load(cpu: &Cpu, _bus: &Bus, _addr: u16) -> u8 {
+    fn load(cpu: &Cpu, _addr: u16) -> u8 {
         cpu.a
     }
 
-    fn store(cpu: &mut Cpu, _bus: &mut Bus, _addr: u16, value: u8) {
+    fn store(cpu: &mut Cpu, _addr: u16, value: u8) {
         cpu.a = value;
     }
 
-    fn format(_cpu: &Cpu, _bus: &Bus, _addr: u16) -> String {
+    fn format(_cpu: &Cpu, _addr: u16) -> String {
         " A".to_string()
     }
 }
 
 struct Absolute {}
-impl AddressModeImpl for Absolute {
+impl AddressMode for Absolute {
     const OPERAND_SIZE: usize = 2;
 
-    fn addr(_cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
-        bus.read_u16(addr + 1)
+    fn addr(cpu: &Cpu, addr: u16) -> u16 {
+        cpu.read_u16(addr + 1)
     }
 
-    fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
+    fn format(cpu: &Cpu, addr: u16) -> String {
         return format!(
             " {:04X} @{:02X}",
-            Self::addr(cpu, bus, addr),
-            Self::load(cpu, bus, addr)
+            Self::addr(cpu, addr),
+            Self::load(cpu, addr)
         );
     }
 }
 
 struct AbsoluteX {}
-impl AddressModeImpl for AbsoluteX {
+impl AddressMode for AbsoluteX {
     const OPERAND_SIZE: usize = 2;
 
-    fn addr(cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
-        bus.read_u16(addr + 1) + cpu.x as u16
+    fn addr(cpu: &Cpu, addr: u16) -> u16 {
+        cpu.read_u16(addr + 1) + cpu.x as u16
     }
 
-    fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
+    fn format(cpu: &Cpu, addr: u16) -> String {
         return format!(
             " {:04X}+X ={:04X} @{:02X}",
-            bus.read_u16(addr + 1),
-            Self::addr(cpu, bus, addr),
-            Self::load(cpu, bus, addr)
+            cpu.read_u16(addr + 1),
+            Self::addr(cpu, addr),
+            Self::load(cpu, addr)
         );
     }
 }
 
 struct AbsoluteY {}
-impl AddressModeImpl for AbsoluteY {
+impl AddressMode for AbsoluteY {
     const OPERAND_SIZE: usize = 2;
 
-    fn addr(cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
-        bus.read_u16(addr + 1).wrapping_add(cpu.y as u16)
+    fn addr(cpu: &Cpu, addr: u16) -> u16 {
+        cpu.read_u16(addr + 1).wrapping_add(cpu.y as u16)
     }
 
-    fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
+    fn format(cpu: &Cpu, addr: u16) -> String {
         return format!(
             " {:04X}+Y ={:04X} @{:02X}",
-            bus.read_u16(addr + 1),
-            Self::addr(cpu, bus, addr),
-            Self::load(cpu, bus, addr)
+            cpu.read_u16(addr + 1),
+            Self::addr(cpu, addr),
+            Self::load(cpu, addr)
         );
     }
 }
 
 struct ZeroPage {}
-impl AddressModeImpl for ZeroPage {
+impl AddressMode for ZeroPage {
     const OPERAND_SIZE: usize = 1;
 
-    fn addr(_cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
-        bus.read(addr + 1) as u16
+    fn addr(cpu: &Cpu, addr: u16) -> u16 {
+        cpu.read(addr + 1) as u16
     }
 
-    fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
+    fn format(cpu: &Cpu, addr: u16) -> String {
         return format!(
             " {:02X} @ {:02X}",
-            Self::addr(cpu, bus, addr),
-            Self::load(cpu, bus, addr)
+            Self::addr(cpu, addr),
+            Self::load(cpu, addr)
         );
     }
 }
 
 struct ZeroPageX {}
-impl AddressModeImpl for ZeroPageX {
+impl AddressMode for ZeroPageX {
     const OPERAND_SIZE: usize = 1;
 
-    fn addr(cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
-        bus.read(addr + 1).wrapping_add(cpu.x) as u16
+    fn addr(cpu: &Cpu, addr: u16) -> u16 {
+        cpu.read(addr + 1).wrapping_add(cpu.x) as u16
     }
 
-    fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
+    fn format(cpu: &Cpu, addr: u16) -> String {
         return format!(
             " {:02X}+X ={:04X} @ {:02X}",
-            bus.read(addr + 1),
-            Self::addr(cpu, bus, addr),
-            Self::load(cpu, bus, addr)
+            cpu.read(addr + 1),
+            Self::addr(cpu, addr),
+            Self::load(cpu, addr)
         );
     }
 }
 
 struct ZeroPageY {}
-impl AddressModeImpl for ZeroPageY {
+impl AddressMode for ZeroPageY {
     const OPERAND_SIZE: usize = 1;
 
-    fn addr(cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
-        bus.read(addr + 1).wrapping_add(cpu.y) as u16
+    fn addr(cpu: &Cpu, addr: u16) -> u16 {
+        cpu.read(addr + 1).wrapping_add(cpu.y) as u16
     }
 
-    fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
+    fn format(cpu: &Cpu, addr: u16) -> String {
         return format!(
             " {:02X}+Y ={:04X} @ {:02X}",
-            bus.read(addr + 1),
-            Self::addr(cpu, bus, addr),
-            Self::load(cpu, bus, addr)
+            cpu.read(addr + 1),
+            Self::addr(cpu, addr),
+            Self::load(cpu, addr)
         );
     }
 }
 
 struct Relative {}
-impl AddressModeImpl for Relative {
+impl AddressMode for Relative {
     const OPERAND_SIZE: usize = 1;
 
-    fn addr(_cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
-        let delta = bus.read(addr + 1) as i8 as i16;
+    fn addr(cpu: &Cpu, addr: u16) -> u16 {
+        let delta = cpu.read(addr + 1) as i8 as i16;
         let base_addr = addr + 1 + Self::OPERAND_SIZE as u16;
         if delta > 0 {
             base_addr.wrapping_add(delta.unsigned_abs())
@@ -640,111 +597,105 @@ impl AddressModeImpl for Relative {
         }
     }
 
-    fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
-        let relative_addr = bus.read(addr + 1) as i8;
+    fn format(cpu: &Cpu, addr: u16) -> String {
+        let relative_addr = cpu.read(addr + 1) as i8;
         return format!(
             " {:+02X} ={:04X} @ {:02X}",
             relative_addr,
-            Self::addr(cpu, bus, addr),
-            Self::load(cpu, bus, addr)
+            Self::addr(cpu, addr),
+            Self::load(cpu, addr)
         );
     }
 }
 
 struct Indirect {}
-impl AddressModeImpl for Indirect {
+impl AddressMode for Indirect {
     const OPERAND_SIZE: usize = 2;
 
-    fn addr(_cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
-        let indirect_addr = bus.read_u16(addr + 1);
+    fn addr(cpu: &Cpu, addr: u16) -> u16 {
+        let indirect_addr = cpu.read_u16(addr + 1);
         let bytes = if indirect_addr & 0x00FF == 0x00FF {
             // CPU Bug: Address wraps around inside page.
             let page = indirect_addr & 0xFF00;
-            [bus.read(indirect_addr), bus.read(page)]
+            [cpu.read(indirect_addr), cpu.read(page)]
         } else {
-            [bus.read(indirect_addr), bus.read(indirect_addr + 1)]
+            [cpu.read(indirect_addr), cpu.read(indirect_addr + 1)]
         };
         u16::from_le_bytes(bytes)
     }
 
-    fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
-        let indirect_addr = bus.read_u16(addr + 1);
+    fn format(cpu: &Cpu, addr: u16) -> String {
+        let indirect_addr = cpu.read_u16(addr + 1);
         return format!(
             " (${:04X}) ={:04X} @ {:02X}",
             indirect_addr,
-            Self::addr(cpu, bus, addr),
-            Self::load(cpu, bus, addr)
+            Self::addr(cpu, addr),
+            Self::load(cpu, addr)
         );
     }
 }
 
 struct IndirectY {}
-impl AddressModeImpl for IndirectY {
+impl AddressMode for IndirectY {
     const OPERAND_SIZE: usize = 1;
 
-    fn addr(cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
+    fn addr(cpu: &Cpu, addr: u16) -> u16 {
         // Note: Zero-page address lookup will wrap around from 0xFF to 0x00.
         // TODO: Implement zero page u16 reads in bus
-        let indirect_addr = bus.read(addr + 1);
+        let indirect_addr = cpu.read(addr + 1);
         let bytes = [
-            bus.read(indirect_addr as u16),
-            bus.read(indirect_addr.wrapping_add(1) as u16),
+            cpu.read(indirect_addr as u16),
+            cpu.read(indirect_addr.wrapping_add(1) as u16),
         ];
         u16::from_le_bytes(bytes).wrapping_add(cpu.y as u16)
     }
 
-    fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
-        let indirect_addr = bus.read(addr + 1);
-        let indirect = bus.read_u16(indirect_addr as u16);
+    fn format(cpu: &Cpu, addr: u16) -> String {
+        let indirect_addr = cpu.read(addr + 1);
+        let indirect = cpu.read_u16(indirect_addr as u16);
         return format!(
             " (${:02X})={:04X}+Y ={:04X} @ {:02X}",
             indirect_addr,
             indirect,
-            Self::addr(cpu, bus, addr),
-            Self::load(cpu, bus, addr)
+            Self::addr(cpu, addr),
+            Self::load(cpu, addr)
         );
     }
 }
 
 struct IndirectX {}
-impl AddressModeImpl for IndirectX {
+impl AddressMode for IndirectX {
     const OPERAND_SIZE: usize = 1;
 
-    fn addr(cpu: &Cpu, bus: &Bus, addr: u16) -> u16 {
+    fn addr(cpu: &Cpu, addr: u16) -> u16 {
         // Note: Zero-page address lookup will wrap around from 0xFF to 0x00.
         // TODO: Implement zero page u16 reads in bus
-        let indirect_addr = bus.read(addr + 1).wrapping_add(cpu.x);
+        let indirect_addr = cpu.read(addr + 1).wrapping_add(cpu.x);
         let bytes = [
-            bus.read(indirect_addr as u16),
-            bus.read(indirect_addr.wrapping_add(1) as u16),
+            cpu.read(indirect_addr as u16),
+            cpu.read(indirect_addr.wrapping_add(1) as u16),
         ];
         u16::from_le_bytes(bytes)
     }
 
-    fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String {
-        let indirect_addr = bus.read(addr + 1);
+    fn format(cpu: &Cpu, addr: u16) -> String {
+        let indirect_addr = cpu.read(addr + 1);
         return format!(
             " (${:02X}+X) ={:04X} @{:02X}",
             indirect_addr,
-            Self::addr(cpu, bus, addr),
-            Self::load(cpu, bus, addr)
+            Self::addr(cpu, addr),
+            Self::load(cpu, addr)
         );
     }
 }
 
-trait AddressModeImpl {
-    const OPERAND_SIZE: usize = 0;
+////////////////////////////////////////////////////////////////////////////////
+// Utilities shared by operations
 
-    fn addr(cpu: &Cpu, bus: &Bus, addr: u16) -> u16;
-    fn format(cpu: &Cpu, bus: &Bus, addr: u16) -> String;
-
-    fn load(cpu: &Cpu, bus: &Bus, addr: u16) -> u8 {
-        bus.read(Self::addr(cpu, bus, addr))
-    }
-
-    fn store(cpu: &mut Cpu, bus: &mut Bus, addr: u16, value: u8) {
-        bus.write(Self::addr(cpu, bus, addr), value)
-    }
+pub fn update_negative_zero_flags(cpu: &mut Cpu, value: u8) {
+    cpu.status_flags.set(StatusFlags::ZERO, value == 0);
+    cpu.status_flags
+        .set(StatusFlags::NEGATIVE, value & 0b1000_0000 != 0);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -752,455 +703,450 @@ trait AddressModeImpl {
 
 // J** (Jump) / RT* (Return)
 
-fn jmp<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.program_counter = ctx.operand_addr();
+fn jmp<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    cpu.program_counter = AM::addr(cpu, addr);
 }
 
-fn jsr<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    let bytes = (ctx.cpu.program_counter - 1).to_le_bytes();
-    ctx.cpu.stack_push(ctx.bus, bytes[1]);
-    ctx.cpu.stack_push(ctx.bus, bytes[0]);
-    ctx.cpu.program_counter = ctx.operand_addr();
+fn jsr<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    let bytes = (cpu.program_counter - 1).to_le_bytes();
+    cpu.stack_push(bytes[1]);
+    cpu.stack_push(bytes[0]);
+    cpu.program_counter = AM::addr(cpu, addr);
 }
 
-fn rts<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    let bytes = [ctx.cpu.stack_pop(ctx.bus), ctx.cpu.stack_pop(ctx.bus)];
+fn rts<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
+    let bytes = [cpu.stack_pop(), cpu.stack_pop()];
     // We are reading the address back in inverse order, hence big endian.
-    ctx.cpu.program_counter = u16::from_le_bytes(bytes) + 1;
+    cpu.program_counter = u16::from_le_bytes(bytes) + 1;
 }
 
-fn rti<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    plp(ctx);
-    let bytes = [ctx.cpu.stack_pop(ctx.bus), ctx.cpu.stack_pop(ctx.bus)];
-    ctx.cpu.program_counter = u16::from_le_bytes(bytes);
+fn rti<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    plp::<AM>(cpu, addr);
+    let bytes = [cpu.stack_pop(), cpu.stack_pop()];
+    cpu.program_counter = u16::from_le_bytes(bytes);
 }
 
 // ST* (Store)
 
-fn sta<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.store_operand(ctx.cpu.a);
+fn sta<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::store(cpu, addr, cpu.a);
 }
 
-fn stx<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.store_operand(ctx.cpu.x);
+fn stx<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::store(cpu, addr, cpu.x);
 }
 
-fn sty<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.store_operand(ctx.cpu.y);
+fn sty<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::store(cpu, addr, cpu.y);
 }
 
 // LD* (Load)
 
-fn lda<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.a = ctx.load_operand();
-    ctx.update_negative_zero_flags(ctx.cpu.a);
+fn lda<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    cpu.a = AM::load(cpu, addr);
+    update_negative_zero_flags(cpu, cpu.a);
 }
 
-fn ldy<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.y = ctx.load_operand();
-    ctx.update_negative_zero_flags(ctx.cpu.y);
+fn ldy<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    cpu.y = AM::load(cpu, addr);
+    update_negative_zero_flags(cpu, cpu.y);
 }
 
-fn ldx<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.x = ctx.load_operand();
-    ctx.update_negative_zero_flags(ctx.cpu.x);
+fn ldx<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    cpu.x = AM::load(cpu, addr);
+    update_negative_zero_flags(cpu, cpu.x);
 }
 
 // IN* (Increment)
 
-fn inc<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    let value = ctx.load_operand().wrapping_add(1);
-    ctx.store_operand(value);
-    ctx.update_negative_zero_flags(value);
+fn inc<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    let value = AM::load(cpu, addr).wrapping_add(1);
+    AM::store(cpu, addr, value);
+    update_negative_zero_flags(cpu, value);
 }
 
-fn inx<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.x = ctx.cpu.x.wrapping_add(1);
-    ctx.update_negative_zero_flags(ctx.cpu.x);
+fn inx<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
+    cpu.x = cpu.x.wrapping_add(1);
+    update_negative_zero_flags(cpu, cpu.x);
 }
 
-fn iny<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.y = ctx.cpu.y.wrapping_add(1);
-    ctx.update_negative_zero_flags(ctx.cpu.y);
+fn iny<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
+    cpu.y = cpu.y.wrapping_add(1);
+    update_negative_zero_flags(cpu, cpu.y);
 }
 
 // DE* (Decrement)
 
-fn dec<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    let value = ctx.load_operand().wrapping_sub(1);
-    ctx.store_operand(value);
-    ctx.update_negative_zero_flags(value);
+fn dec<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    let value = AM::load(cpu, addr).wrapping_sub(1);
+    AM::store(cpu, addr, value);
+    update_negative_zero_flags(cpu, value);
 }
 
-fn dex<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.x = ctx.cpu.x.wrapping_sub(1);
-    ctx.update_negative_zero_flags(ctx.cpu.x);
+fn dex<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
+    cpu.x = cpu.x.wrapping_sub(1);
+    update_negative_zero_flags(cpu, cpu.x);
 }
 
-fn dey<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.y = ctx.cpu.y.wrapping_sub(1);
-    ctx.update_negative_zero_flags(ctx.cpu.y);
+fn dey<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
+    cpu.y = cpu.y.wrapping_sub(1);
+    update_negative_zero_flags(cpu, cpu.y);
 }
 
 // SE* / CL* (Set / clear status bits)
 
-fn sed<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.status_flags.insert(StatusFlags::DECIMAL);
+fn sed<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
+    cpu.status_flags.insert(StatusFlags::DECIMAL);
 }
 
-fn cld<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.status_flags.remove(StatusFlags::DECIMAL);
+fn cld<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
+    cpu.status_flags.remove(StatusFlags::DECIMAL);
 }
 
-fn sec<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.status_flags.insert(StatusFlags::CARRY);
+fn sec<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
+    cpu.status_flags.insert(StatusFlags::CARRY);
 }
 
-fn clc<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.status_flags.remove(StatusFlags::CARRY);
+fn clc<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
+    cpu.status_flags.remove(StatusFlags::CARRY);
 }
 
-fn clv<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.status_flags.remove(StatusFlags::OVERFLOW);
+fn clv<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
+    cpu.status_flags.remove(StatusFlags::OVERFLOW);
 }
 
-fn cli<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.status_flags.remove(StatusFlags::INTERRUPT);
+fn cli<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
+    cpu.status_flags.remove(StatusFlags::INTERRUPT);
 }
 
 // B** (Branch)
 
-fn bcs<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    if ctx.cpu.status_flags.contains(StatusFlags::CARRY) {
-        ctx.cpu.program_counter = ctx.operand_addr();
+fn bcs<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    if cpu.status_flags.contains(StatusFlags::CARRY) {
+        cpu.program_counter = AM::addr(cpu, addr);
     }
 }
 
-fn bcc<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    if !ctx.cpu.status_flags.contains(StatusFlags::CARRY) {
-        ctx.cpu.program_counter = ctx.operand_addr();
+fn bcc<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    if !cpu.status_flags.contains(StatusFlags::CARRY) {
+        cpu.program_counter = AM::addr(cpu, addr);
     }
 }
 
-fn beq<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    if ctx.cpu.status_flags.contains(StatusFlags::ZERO) {
-        ctx.cpu.program_counter = ctx.operand_addr();
+fn beq<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    if cpu.status_flags.contains(StatusFlags::ZERO) {
+        cpu.program_counter = AM::addr(cpu, addr);
     }
 }
 
-fn bne<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    if !ctx.cpu.status_flags.contains(StatusFlags::ZERO) {
-        ctx.cpu.program_counter = ctx.operand_addr();
+fn bne<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    if !cpu.status_flags.contains(StatusFlags::ZERO) {
+        cpu.program_counter = AM::addr(cpu, addr);
     }
 }
 
-fn bmi<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    if ctx.cpu.status_flags.contains(StatusFlags::NEGATIVE) {
-        ctx.cpu.program_counter = ctx.operand_addr();
+fn bmi<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    if cpu.status_flags.contains(StatusFlags::NEGATIVE) {
+        cpu.program_counter = AM::addr(cpu, addr);
     }
 }
 
-fn bpl<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    if !ctx.cpu.status_flags.contains(StatusFlags::NEGATIVE) {
-        ctx.cpu.program_counter = ctx.operand_addr();
+fn bpl<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    if !cpu.status_flags.contains(StatusFlags::NEGATIVE) {
+        cpu.program_counter = AM::addr(cpu, addr);
     }
 }
 
-fn bvs<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    if ctx.cpu.status_flags.contains(StatusFlags::OVERFLOW) {
-        ctx.cpu.program_counter = ctx.operand_addr();
+fn bvs<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    if cpu.status_flags.contains(StatusFlags::OVERFLOW) {
+        cpu.program_counter = AM::addr(cpu, addr);
     }
 }
 
-fn bvc<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    if !ctx.cpu.status_flags.contains(StatusFlags::OVERFLOW) {
-        ctx.cpu.program_counter = ctx.operand_addr();
+fn bvc<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    if !cpu.status_flags.contains(StatusFlags::OVERFLOW) {
+        cpu.program_counter = AM::addr(cpu, addr);
     }
 }
 
 // PH* (Push), PL* (Pull)
 
-fn pha<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.stack_push(ctx.bus, ctx.cpu.a);
+fn pha<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
+    cpu.stack_push(cpu.a);
 }
 
-fn php<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    let mut value = ctx.cpu.status_flags;
+fn php<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
+    let mut value = cpu.status_flags;
     value.insert(StatusFlags::BREAK);
-    ctx.cpu.stack_push(ctx.bus, value.bits);
+    cpu.stack_push(value.bits);
 }
 
-fn pla<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.a = ctx.cpu.stack_pop(ctx.bus);
-    ctx.update_negative_zero_flags(ctx.cpu.a);
+fn pla<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
+    cpu.a = cpu.stack_pop();
+    update_negative_zero_flags(cpu, cpu.a);
 }
 
-fn plp<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    let mut value = StatusFlags::from_bits_truncate(ctx.cpu.stack_pop(ctx.bus));
+fn plp<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
+    let mut value = StatusFlags::from_bits_truncate(cpu.stack_pop());
     value.set(
         StatusFlags::BREAK,
-        ctx.cpu.status_flags.contains(StatusFlags::BREAK),
+        cpu.status_flags.contains(StatusFlags::BREAK),
     );
     value.insert(StatusFlags::UNUSED);
-    ctx.cpu.status_flags = value;
+    cpu.status_flags = value;
 }
 
 // add / sub
 
-fn adc<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    let carry: u16 = if ctx.cpu.status_flags.contains(StatusFlags::CARRY) {
+fn adc<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    let carry: u16 = if cpu.status_flags.contains(StatusFlags::CARRY) {
         1
     } else {
         0
     };
-    let operand = ctx.load_operand();
-    let result = ctx.cpu.a as u16 + operand as u16 + carry;
+    let operand = AM::load(cpu, addr);
+    let result = cpu.a as u16 + operand as u16 + carry;
 
-    ctx.cpu.status_flags.set(StatusFlags::CARRY, result > 0xFF);
-    ctx.cpu.status_flags.set(
+    cpu.status_flags.set(StatusFlags::CARRY, result > 0xFF);
+    cpu.status_flags.set(
         StatusFlags::OVERFLOW,
-        (operand ^ result as u8) & (result as u8 ^ ctx.cpu.a) & 0x80 != 0,
+        (operand ^ result as u8) & (result as u8 ^ cpu.a) & 0x80 != 0,
     );
-    ctx.cpu.a = result as u8;
-    ctx.update_negative_zero_flags(ctx.cpu.a);
+    cpu.a = result as u8;
+    update_negative_zero_flags(cpu, cpu.a);
 }
 
-fn sbc<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    let carry: u16 = if ctx.cpu.status_flags.contains(StatusFlags::CARRY) {
+fn sbc<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    let carry: u16 = if cpu.status_flags.contains(StatusFlags::CARRY) {
         1
     } else {
         0
     };
-    let operand = (ctx.load_operand() as i8).wrapping_neg().wrapping_sub(1) as u8;
-    let result = ctx.cpu.a as u16 + operand as u16 + carry;
+    let operand = (AM::load(cpu, addr) as i8).wrapping_neg().wrapping_sub(1) as u8;
+    let result = cpu.a as u16 + operand as u16 + carry;
 
-    ctx.cpu.status_flags.set(StatusFlags::CARRY, result > 0xFF);
-    ctx.cpu.status_flags.set(
+    cpu.status_flags.set(StatusFlags::CARRY, result > 0xFF);
+    cpu.status_flags.set(
         StatusFlags::OVERFLOW,
-        (operand ^ result as u8) & (result as u8 ^ ctx.cpu.a) & 0x80 != 0,
+        (operand ^ result as u8) & (result as u8 ^ cpu.a) & 0x80 != 0,
     );
-    ctx.cpu.a = result as u8;
-    ctx.update_negative_zero_flags(ctx.cpu.a);
+    cpu.a = result as u8;
+    update_negative_zero_flags(cpu, cpu.a);
 }
 
 // Bit-wise operations
 
-fn and<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.a &= ctx.load_operand();
-    ctx.update_negative_zero_flags(ctx.cpu.a);
+fn and<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    cpu.a &= AM::load(cpu, addr);
+    update_negative_zero_flags(cpu, cpu.a);
 }
 
-fn ora<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.a |= ctx.load_operand();
-    ctx.update_negative_zero_flags(ctx.cpu.a);
+fn ora<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    cpu.a |= AM::load(cpu, addr);
+    update_negative_zero_flags(cpu, cpu.a);
 }
 
-fn eor<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.a ^= ctx.load_operand();
-    ctx.update_negative_zero_flags(ctx.cpu.a);
+fn eor<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    cpu.a ^= AM::load(cpu, addr);
+    update_negative_zero_flags(cpu, cpu.a);
 }
 
 // C** (Compare)
 
-fn cmp<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    let (value, overflow) = ctx.cpu.a.overflowing_sub(ctx.load_operand());
-    ctx.update_negative_zero_flags(value);
-    ctx.cpu.status_flags.set(StatusFlags::CARRY, !overflow);
+fn cmp<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    let (value, overflow) = cpu.a.overflowing_sub(AM::load(cpu, addr));
+    update_negative_zero_flags(cpu, value);
+    cpu.status_flags.set(StatusFlags::CARRY, !overflow);
 }
 
-fn cpx<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    let (value, overflow) = ctx.cpu.x.overflowing_sub(ctx.load_operand());
-    ctx.update_negative_zero_flags(value);
-    ctx.cpu.status_flags.set(StatusFlags::CARRY, !overflow);
+fn cpx<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    let (value, overflow) = cpu.x.overflowing_sub(AM::load(cpu, addr));
+    update_negative_zero_flags(cpu, value);
+    cpu.status_flags.set(StatusFlags::CARRY, !overflow);
 }
 
-fn cpy<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    let (value, overflow) = ctx.cpu.y.overflowing_sub(ctx.load_operand());
-    ctx.update_negative_zero_flags(value);
-    ctx.cpu.status_flags.set(StatusFlags::CARRY, !overflow);
+fn cpy<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    let (value, overflow) = cpu.y.overflowing_sub(AM::load(cpu, addr));
+    update_negative_zero_flags(cpu, value);
+    cpu.status_flags.set(StatusFlags::CARRY, !overflow);
 }
 
 // Shifts
 
-fn lsr<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    let operand = ctx.load_operand();
+fn lsr<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    let operand = AM::load(cpu, addr);
     let (result, _) = operand.overflowing_shr(1);
-    ctx.store_operand(result);
-    ctx.update_negative_zero_flags(result);
-    ctx.cpu
-        .status_flags
+    AM::store(cpu, addr, result);
+    update_negative_zero_flags(cpu, result);
+    cpu.status_flags
         .set(StatusFlags::CARRY, (operand & 0x01) != 0);
 }
 
-fn asl<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    let operand = ctx.load_operand();
+fn asl<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    let operand = AM::load(cpu, addr);
     let (result, _) = operand.overflowing_shl(1);
-    ctx.store_operand(result);
-    ctx.update_negative_zero_flags(result);
-    ctx.cpu
-        .status_flags
+    AM::store(cpu, addr, result);
+    update_negative_zero_flags(cpu, result);
+    cpu.status_flags
         .set(StatusFlags::CARRY, (operand & 0x80) != 0);
 }
 
-fn ror<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    let operand = ctx.load_operand();
+fn ror<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    let operand = AM::load(cpu, addr);
     let (mut result, _) = operand.overflowing_shr(1);
-    if ctx.cpu.status_flags.contains(StatusFlags::CARRY) {
+    if cpu.status_flags.contains(StatusFlags::CARRY) {
         result |= 0b1000_0000;
     }
-    ctx.store_operand(result);
-    ctx.update_negative_zero_flags(result);
-    ctx.cpu
-        .status_flags
+    AM::store(cpu, addr, result);
+    update_negative_zero_flags(cpu, result);
+    cpu.status_flags
         .set(StatusFlags::CARRY, (operand & 0x01) != 0);
 }
 
-fn rol<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    let operand = ctx.load_operand();
+fn rol<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    let operand = AM::load(cpu, addr);
     let (mut result, _) = operand.overflowing_shl(1);
-    if ctx.cpu.status_flags.contains(StatusFlags::CARRY) {
+    if cpu.status_flags.contains(StatusFlags::CARRY) {
         result |= 0b0000_0001;
     }
-    ctx.store_operand(result);
-    ctx.update_negative_zero_flags(result);
-    ctx.cpu
-        .status_flags
+    AM::store(cpu, addr, result);
+    update_negative_zero_flags(cpu, result);
+    cpu.status_flags
         .set(StatusFlags::CARRY, (operand & 0x80) != 0);
 }
 
 // Register Transfers
 
-fn txa<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.a = ctx.cpu.x;
-    ctx.update_negative_zero_flags(ctx.cpu.a);
+fn txa<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
+    cpu.a = cpu.x;
+    update_negative_zero_flags(cpu, cpu.a);
 }
 
-fn tax<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.x = ctx.cpu.a;
-    ctx.update_negative_zero_flags(ctx.cpu.x);
+fn tax<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
+    cpu.x = cpu.a;
+    update_negative_zero_flags(cpu, cpu.x);
 }
 
-fn tay<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.y = ctx.cpu.a;
-    ctx.update_negative_zero_flags(ctx.cpu.y);
+fn tay<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
+    cpu.y = cpu.a;
+    update_negative_zero_flags(cpu, cpu.y);
 }
 
-fn tya<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.a = ctx.cpu.y;
-    ctx.update_negative_zero_flags(ctx.cpu.a);
+fn tya<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
+    cpu.a = cpu.y;
+    update_negative_zero_flags(cpu, cpu.a);
 }
 
-fn tsx<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.x = ctx.cpu.sp;
-    ctx.update_negative_zero_flags(ctx.cpu.x);
+fn tsx<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
+    cpu.x = cpu.sp;
+    update_negative_zero_flags(cpu, cpu.x);
 }
 
-fn txs<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.sp = ctx.cpu.x;
+fn txs<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
+    cpu.sp = cpu.x;
 }
 
 // Misc Operations
 
-fn bit<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    let value = ctx.load_operand();
-    ctx.cpu.status_flags.set(
+fn bit<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    let value = AM::load(cpu, addr);
+    cpu.status_flags.set(
         StatusFlags::NEGATIVE,
         (value & StatusFlags::NEGATIVE.bits) > 0,
     );
-    ctx.cpu.status_flags.set(
+    cpu.status_flags.set(
         StatusFlags::OVERFLOW,
         (value & StatusFlags::OVERFLOW.bits) > 0,
     );
-    ctx.cpu
-        .status_flags
-        .set(StatusFlags::ZERO, (value & ctx.cpu.a) == 0);
+    cpu.status_flags
+        .set(StatusFlags::ZERO, (value & cpu.a) == 0);
 }
 
-fn hlt<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.cpu.halt = true;
+fn hlt<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
+    cpu.halt = true;
 }
 
-fn sei<AM: AddressModeImpl>(_ctx: &mut Context<AM>) {}
+fn sei<AM: AddressMode>(_cpu: &mut Cpu, _addr: u16) {}
 
-fn nop<AM: AddressModeImpl>(_ctx: &mut Context<AM>) {}
+fn nop<AM: AddressMode>(_cpu: &mut Cpu, _addr: u16) {}
 
 // Illegal Instructions
 
-fn ill<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    panic!("Illegal Opcode {:02X}", ctx.bus.read(ctx.addr));
+fn ill<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    panic!("Illegal Opcode {:02X}", AM::load(cpu, addr));
 }
 
-fn lax<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    lda(ctx);
-    ldx(ctx);
+fn lax<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    lda::<AM>(cpu, addr);
+    ldx::<AM>(cpu, addr);
 }
 
-fn sax<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ctx.store_operand(ctx.cpu.a & ctx.cpu.x);
+fn sax<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::store(cpu, addr, cpu.a & cpu.x);
 }
 
-fn dcp<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    dec(ctx);
-    cmp(ctx);
+fn dcp<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    dec::<AM>(cpu, addr);
+    cmp::<AM>(cpu, addr);
 }
 
-fn isc<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    inc(ctx);
-    sbc(ctx);
+fn isc<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    inc::<AM>(cpu, addr);
+    sbc::<AM>(cpu, addr);
 }
 
-fn slo<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    asl(ctx);
-    ora(ctx);
+fn slo<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    asl::<AM>(cpu, addr);
+    ora::<AM>(cpu, addr);
 }
 
-fn rla<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    rol(ctx);
-    and(ctx);
+fn rla<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    rol::<AM>(cpu, addr);
+    and::<AM>(cpu, addr);
 }
 
-fn rra<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    ror(ctx);
-    adc(ctx);
+fn rra<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    ror::<AM>(cpu, addr);
+    adc::<AM>(cpu, addr);
 }
 
-fn sre<AM: AddressModeImpl>(ctx: &mut Context<AM>) {
-    lsr(ctx);
-    eor(ctx);
+fn sre<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    lsr::<AM>(cpu, addr);
+    eor::<AM>(cpu, addr);
 }
 
-fn sha<AM: AddressModeImpl>(_ctx: &mut Context<AM>) {
+fn sha<AM: AddressMode>(_cpu: &mut Cpu, _addr: u16) {
     unimplemented!();
 }
 
-fn alr<AM: AddressModeImpl>(_ctx: &mut Context<AM>) {
+fn alr<AM: AddressMode>(_cpu: &mut Cpu, _addr: u16) {
     unimplemented!();
 }
 
-fn anc<AM: AddressModeImpl>(_ctx: &mut Context<AM>) {
+fn anc<AM: AddressMode>(_cpu: &mut Cpu, _addr: u16) {
     unimplemented!();
 }
 
-fn arr<AM: AddressModeImpl>(_ctx: &mut Context<AM>) {
+fn arr<AM: AddressMode>(_cpu: &mut Cpu, _addr: u16) {
     unimplemented!();
 }
 
-fn ane<AM: AddressModeImpl>(_ctx: &mut Context<AM>) {
+fn ane<AM: AddressMode>(_cpu: &mut Cpu, _addr: u16) {
     unimplemented!();
 }
 
-fn tas<AM: AddressModeImpl>(_ctx: &mut Context<AM>) {
+fn tas<AM: AddressMode>(_cpu: &mut Cpu, _addr: u16) {
     unimplemented!();
 }
 
-fn lxa<AM: AddressModeImpl>(_ctx: &mut Context<AM>) {
+fn lxa<AM: AddressMode>(_cpu: &mut Cpu, _addr: u16) {
     unimplemented!();
 }
 
-fn las<AM: AddressModeImpl>(_ctx: &mut Context<AM>) {
+fn las<AM: AddressMode>(_cpu: &mut Cpu, _addr: u16) {
     unimplemented!();
 }
 
-fn sbx<AM: AddressModeImpl>(_ctx: &mut Context<AM>) {
+fn sbx<AM: AddressMode>(_cpu: &mut Cpu, _addr: u16) {
     unimplemented!();
 }

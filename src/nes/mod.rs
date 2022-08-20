@@ -1,43 +1,51 @@
-pub mod bus;
+pub mod cartridge;
 pub mod cpu;
 pub mod trace;
 
 use anyhow::Result;
+use std::cell::RefCell;
 use std::fs;
 use std::path::Path;
+use std::rc::Rc;
 
-use self::bus::Bus;
-use self::bus::RomDevice;
+use self::cartridge::Cartridge;
 use self::cpu::Cpu;
 use self::cpu::Operation;
 use self::trace::Trace;
 
-////////////////////////////////////////////////////////////////////////////////
-// System
-
-#[derive(Default)]
 pub struct System {
-    pub bus: Bus,
     pub cpu: Cpu,
+    pub cartridge: Rc<RefCell<Cartridge>>,
     pub clock: u64,
+}
+
+impl Default for System {
+    fn default() -> Self {
+        let cartridge = Rc::new(RefCell::new(Cartridge::default()));
+        Self {
+            cpu: Cpu::new(cartridge.clone()),
+            cartridge,
+            clock: 0,
+        }
+    }
 }
 
 impl System {
     pub fn tick(&mut self) -> Result<bool> {
         self.clock += 1;
-        self.cpu.tick(self.clock, &mut self.bus)
+        self.cpu.tick(self.clock)
     }
 
     pub fn trace(&self) -> Result<Trace> {
-        if let Ok(operation) = Operation::read(&self.bus, self.cpu.program_counter) {
+        if let Ok(operation) = Operation::read(&self.cpu, self.cpu.program_counter) {
             Ok(Trace {
                 pc: self.cpu.program_counter,
                 opcode_raw: self
-                    .bus
+                    .cpu
                     .slice(self.cpu.program_counter, operation.size() as u16)
                     .collect(),
                 legal: operation.is_legal(),
-                opcode_str: operation.format(&self.cpu, &self.bus),
+                opcode_str: operation.format(&self.cpu),
                 a: self.cpu.a,
                 x: self.cpu.x,
                 y: self.cpu.y,
@@ -47,7 +55,7 @@ impl System {
         } else {
             Ok(Trace {
                 pc: self.cpu.program_counter,
-                opcode_raw: vec![self.bus.read(self.cpu.program_counter)],
+                opcode_raw: vec![self.cpu.read(self.cpu.program_counter)],
                 legal: false,
                 opcode_str: "N/A".to_string(),
                 a: self.cpu.a,
@@ -57,11 +65,6 @@ impl System {
                 sp: self.cpu.sp,
             })
         }
-    }
-
-    pub fn execute_until_halt(&mut self) -> Result<()> {
-        while self.cpu.execute_one(&mut self.bus)? {}
-        Ok(())
     }
 
     pub fn with_program(program: &[u8]) -> System {
@@ -76,19 +79,24 @@ impl System {
         Ok(system)
     }
 
+    pub fn execute_until_halt(&mut self) -> Result<()> {
+        while self.cpu.execute_one()? {}
+        Ok(())
+    }
+
     pub fn load_program(&mut self, program: &[u8]) {
-        self.cpu.program_counter = RomDevice::START_ADDR;
-        self.bus.rom.load_program(program);
+        self.cpu.program_counter = Cartridge::START_ADDR;
+        self.cartridge.borrow_mut().load_program(program);
     }
 
     pub fn load_ines(&mut self, path: &Path) -> Result<()> {
         let ines_file = fs::read(path)?;
-        self.bus.rom.load_ines(&ines_file)?;
+        self.cartridge.borrow_mut().load_ines(&ines_file)?;
         self.reset()
     }
 
     pub fn reset(&mut self) -> Result<()> {
-        self.cpu.program_counter = self.bus.read_u16(0xFFFC_u16);
+        self.cpu.program_counter = self.cpu.read_u16(0xFFFC_u16);
         Ok(())
     }
 }
