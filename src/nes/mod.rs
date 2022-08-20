@@ -1,6 +1,7 @@
 pub mod apu;
 pub mod cartridge;
 pub mod cpu;
+pub mod ppu;
 pub mod trace;
 
 use anyhow::Result;
@@ -13,12 +14,14 @@ use self::apu::Apu;
 use self::cartridge::Cartridge;
 use self::cpu::Cpu;
 use self::cpu::Operation;
+use self::ppu::Ppu;
 use self::trace::Trace;
 
 pub struct System {
     pub cpu: Cpu,
     pub cartridge: Rc<RefCell<Cartridge>>,
     pub apu: Rc<RefCell<Apu>>,
+    pub ppu: Rc<RefCell<Ppu>>,
     pub clock: u64,
 }
 
@@ -26,9 +29,11 @@ impl Default for System {
     fn default() -> Self {
         let cartridge = Rc::new(RefCell::new(Cartridge::default()));
         let apu = Rc::new(RefCell::new(Apu::default()));
+        let ppu = Rc::new(RefCell::new(Ppu::default()));
         Self {
-            cpu: Cpu::new(cartridge.clone(), apu.clone()),
+            cpu: Cpu::new(cartridge.clone(), apu.clone(), ppu.clone()),
             apu,
+            ppu,
             cartridge,
             clock: 0,
         }

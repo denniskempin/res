@@ -29,7 +29,7 @@ pub fn test_basic_program() {
 #[test]
 pub fn test_01_basic() {
     let system = System::with_ines(Path::new("tests/cpu/01-basics.nes")).unwrap();
-    compare_to_log(system, "tests/cpu/01-basics.log", 8000);
+    compare_to_log(system, "tests/cpu/01-basics.log", 8199);
 }
 
 #[test]
