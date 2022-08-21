@@ -4,7 +4,7 @@ use std::{cell::RefCell, rc::Rc};
 
 pub use operations::Operation;
 
-use super::{apu::Apu, cartridge::Cartridge, ppu::Ppu};
+use super::{apu::Apu, cartridge::Cartridge, memory_map::MemoryMap, ppu::Ppu};
 use anyhow::Result;
 use bitflags::bitflags;
 
@@ -124,7 +124,6 @@ impl Cpu {
     }
 
     pub fn write(&mut self, addr: u16, value: u8) {
-        println!("Addr: {addr:04X}");
         match addr {
             RAM_START_ADDR..=RAM_END_ADDR => {
                 self.ram[addr as usize & 0b0000_0111_1111_1111] = value

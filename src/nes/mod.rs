@@ -1,6 +1,7 @@
 pub mod apu;
 pub mod cartridge;
 pub mod cpu;
+pub mod memory_map;
 pub mod ppu;
 pub mod trace;
 
