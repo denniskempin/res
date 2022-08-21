@@ -1,12 +1,23 @@
 mod operations;
 
-use std::{cell::RefCell, rc::Rc};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub use operations::Operation;
 
-use super::{apu::Apu, cartridge::Cartridge, memory_map::MemoryMap, ppu::Ppu};
+use super::apu::Apu;
+use super::cartridge::Cartridge;
+use super::ppu::Ppu;
 use anyhow::Result;
 use bitflags::bitflags;
+
+////////////////////////////////////////////////////////////////////////////////
+// CpuMemoryMap
+
+pub trait CpuMemoryMap {
+    fn read(&mut self, addr: u16) -> u8;
+    fn write(&mut self, addr: u16, value: u8);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // StatusFlags
@@ -24,9 +35,6 @@ bitflags! {
         const CARRY = 0b0000_0001;
     }
 }
-
-pub const RAM_START_ADDR: u16 = 0x0000;
-pub const RAM_END_ADDR: u16 = 0x1FFF;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Cpu
@@ -115,24 +123,20 @@ impl Cpu {
 
     pub fn read(&self, addr: u16) -> u8 {
         match addr {
-            RAM_START_ADDR..=RAM_END_ADDR => self.ram[addr as usize & 0b0000_0111_1111_1111],
-            Cartridge::START_ADDR..=Cartridge::END_ADDR => self.cartridge.borrow().read(addr),
-            Apu::START_ADDR..=Apu::END_ADDR => self.apu.borrow().read(addr),
-            Ppu::START_ADDR..=Ppu::END_ADDR => self.ppu.borrow().read(addr),
+            0x0000..=0x1FFF => self.ram[addr as usize & 0b0000_0111_1111_1111],
+            0x2000..=0x3FFF => self.ppu.borrow_mut().read(addr),
+            0x4000..=0x4017 => self.apu.borrow_mut().read(addr),
+            0x8000..=0xFFFF => self.cartridge.borrow_mut().read(addr),
             _ => panic!("Warning. Illegal read from: ${:04X}", addr),
         }
     }
 
     pub fn write(&mut self, addr: u16, value: u8) {
         match addr {
-            RAM_START_ADDR..=RAM_END_ADDR => {
-                self.ram[addr as usize & 0b0000_0111_1111_1111] = value
-            }
-            Cartridge::START_ADDR..=Cartridge::END_ADDR => {
-                self.cartridge.borrow_mut().write(addr, value)
-            }
-            Apu::START_ADDR..=Apu::END_ADDR => self.apu.borrow_mut().write(addr, value),
-            Ppu::START_ADDR..=Ppu::END_ADDR => self.ppu.borrow_mut().write(addr, value),
+            0x0000..=0x1FFF => self.ram[addr as usize & 0b0000_0111_1111_1111] = value,
+            0x2000..=0x3FFF => self.ppu.borrow_mut().write(addr, value),
+            0x4000..=0x4017 => self.apu.borrow_mut().write(addr, value),
+            0x8000..=0xFFFF => self.cartridge.borrow_mut().write(addr, value),
             _ => panic!("Warning. Illegal write to: ${:04X}", addr),
         }
     }

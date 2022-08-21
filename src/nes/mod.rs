@@ -1,7 +1,6 @@
 pub mod apu;
 pub mod cartridge;
 pub mod cpu;
-pub mod memory_map;
 pub mod ppu;
 pub mod trace;
 
@@ -30,7 +29,7 @@ impl Default for System {
     fn default() -> Self {
         let cartridge = Rc::new(RefCell::new(Cartridge::default()));
         let apu = Rc::new(RefCell::new(Apu::default()));
-        let ppu = Rc::new(RefCell::new(Ppu::default()));
+        let ppu = Rc::new(RefCell::new(Ppu::new(cartridge.clone())));
         Self {
             cpu: Cpu::new(cartridge.clone(), apu.clone(), ppu.clone()),
             apu,
@@ -78,10 +77,10 @@ impl System {
         }
     }
 
-    pub fn with_program(program: &[u8]) -> System {
+    pub fn with_program(program: &[u8]) -> Result<System> {
         let mut system = System::default();
-        system.load_program(program);
-        system
+        system.load_program(program)?;
+        Ok(system)
     }
 
     pub fn with_ines(path: &Path) -> Result<System> {
@@ -95,9 +94,9 @@ impl System {
         Ok(())
     }
 
-    pub fn load_program(&mut self, program: &[u8]) {
-        self.cpu.program_counter = Cartridge::START_ADDR;
+    pub fn load_program(&mut self, program: &[u8]) -> Result<()> {
         self.cartridge.borrow_mut().load_program(program);
+        self.reset()
     }
 
     pub fn load_ines(&mut self, path: &Path) -> Result<()> {

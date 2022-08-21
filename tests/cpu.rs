@@ -18,7 +18,9 @@ pub fn test_basic_program() {
         0xa4, 0x21, // LDY $21      -> Y=#$12
         0xc8, // INY          -> Y=#$13
         0x00, // BRK
-    ]);
+    ])
+    .unwrap();
+    system.cpu.program_counter = 0x8000;
     system.execute_until_halt().unwrap();
     assert_eq!(system.cpu.read(0x20_u16), 0x10);
     assert_eq!(system.cpu.read(0x21_u16), 0x12);
@@ -29,7 +31,7 @@ pub fn test_basic_program() {
 #[test]
 pub fn test_01_basic() {
     let system = System::with_ines(Path::new("tests/cpu/01-basics.nes")).unwrap();
-    compare_to_log(system, "tests/cpu/01-basics.log", 8199);
+    compare_to_log(system, "tests/cpu/01-basics.log", 0);
 }
 
 #[test]
