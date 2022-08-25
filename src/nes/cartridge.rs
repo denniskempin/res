@@ -1,8 +1,6 @@
 use anyhow::anyhow;
 use anyhow::Result;
 
-use super::cpu::CpuMemoryMap;
-
 #[derive(Default)]
 pub struct Cartridge {
     pub prg: Vec<u8>,
@@ -40,15 +38,17 @@ impl Cartridge {
 
         Ok(())
     }
-}
 
-impl CpuMemoryMap for Cartridge {
-    fn read(&mut self, addr: u16) -> u8 {
+    pub fn cpu_bus_peek(&self, addr: u16) -> u8 {
         let addr = addr as usize % self.prg.len();
         self.prg[addr]
     }
 
-    fn write(&mut self, addr: u16, _: u8) {
+    pub fn cpu_bus_read(&mut self, addr: u16) -> u8 {
+        self.cpu_bus_peek(addr)
+    }
+
+    pub fn cpu_bus_write(&mut self, addr: u16, _: u8) {
         panic!("Illegal write to rom device at {addr:04X}.");
     }
 }

@@ -4,55 +4,38 @@ pub mod cpu;
 pub mod ppu;
 pub mod trace;
 
-use anyhow::Result;
-use std::cell::RefCell;
-use std::fs;
-use std::path::Path;
-use std::rc::Rc;
-
-use self::apu::Apu;
-use self::cartridge::Cartridge;
 use self::cpu::Cpu;
 use self::cpu::Operation;
-use self::ppu::Ppu;
 use self::trace::Trace;
+use anyhow::Result;
+use std::fs;
+use std::path::Path;
 
+#[derive(Default)]
 pub struct System {
     pub cpu: Cpu,
-    pub cartridge: Rc<RefCell<Cartridge>>,
-    pub apu: Rc<RefCell<Apu>>,
-    pub ppu: Rc<RefCell<Ppu>>,
     pub clock: u64,
-}
-
-impl Default for System {
-    fn default() -> Self {
-        let cartridge = Rc::new(RefCell::new(Cartridge::default()));
-        let apu = Rc::new(RefCell::new(Apu::default()));
-        let ppu = Rc::new(RefCell::new(Ppu::new(cartridge.clone())));
-        Self {
-            cpu: Cpu::new(cartridge.clone(), apu.clone(), ppu.clone()),
-            apu,
-            ppu,
-            cartridge,
-            clock: 0,
-        }
-    }
 }
 
 impl System {
     pub fn tick(&mut self) -> Result<bool> {
-        self.clock += 1;
-        self.cpu.tick(self.clock)
+        if !self.cpu.tick()? {
+            return Ok(false);
+        }
+        self.cpu.bus.ppu.tick();
+        self.cpu.bus.ppu.tick();
+        self.cpu.bus.ppu.tick();
+        Ok(true)
     }
 
     pub fn trace(&self) -> Result<Trace> {
-        if let Ok(operation) = Operation::read(&self.cpu, self.cpu.program_counter) {
+        if let Ok(operation) = Operation::peek(&self.cpu, self.cpu.program_counter) {
             Ok(Trace {
                 pc: self.cpu.program_counter,
                 opcode_raw: self
                     .cpu
-                    .slice(self.cpu.program_counter, operation.size() as u16)
+                    .bus
+                    .peek_slice(self.cpu.program_counter, operation.size() as u16)
                     .collect(),
                 legal: operation.is_legal(),
                 opcode_str: operation.format(&self.cpu),
@@ -65,7 +48,7 @@ impl System {
         } else {
             Ok(Trace {
                 pc: self.cpu.program_counter,
-                opcode_raw: vec![self.cpu.read(self.cpu.program_counter)],
+                opcode_raw: vec![self.cpu.bus.peek(self.cpu.program_counter)],
                 legal: false,
                 opcode_str: "N/A".to_string(),
                 a: self.cpu.a,
@@ -95,18 +78,18 @@ impl System {
     }
 
     pub fn load_program(&mut self, program: &[u8]) -> Result<()> {
-        self.cartridge.borrow_mut().load_program(program);
+        self.cpu.bus.cartridge.load_program(program);
         self.reset()
     }
 
     pub fn load_ines(&mut self, path: &Path) -> Result<()> {
         let ines_file = fs::read(path)?;
-        self.cartridge.borrow_mut().load_ines(&ines_file)?;
+        self.cpu.bus.cartridge.load_ines(&ines_file)?;
         self.reset()
     }
 
     pub fn reset(&mut self) -> Result<()> {
-        self.cpu.program_counter = self.cpu.read_u16(0xFFFC_u16);
+        self.cpu.program_counter = self.cpu.bus.read_u16(0xFFFC_u16);
         Ok(())
     }
 }

@@ -22,8 +22,8 @@ pub fn test_basic_program() {
     .unwrap();
     system.cpu.program_counter = 0x8000;
     system.execute_until_halt().unwrap();
-    assert_eq!(system.cpu.read(0x20_u16), 0x10);
-    assert_eq!(system.cpu.read(0x21_u16), 0x12);
+    assert_eq!(system.cpu.bus.peek(0x20_u16), 0x10);
+    assert_eq!(system.cpu.bus.peek(0x21_u16), 0x12);
     assert_eq!(system.cpu.a, 0x11);
     assert_eq!(system.cpu.y, 0x13);
 }
@@ -31,7 +31,7 @@ pub fn test_basic_program() {
 #[test]
 pub fn test_01_basic() {
     let system = System::with_ines(Path::new("tests/cpu/01-basics.nes")).unwrap();
-    compare_to_log(system, "tests/cpu/01-basics.log", 0);
+    compare_to_log(system, "tests/cpu/01-basics.log", 8199);
 }
 
 #[test]

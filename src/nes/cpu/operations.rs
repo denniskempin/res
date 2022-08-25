@@ -17,8 +17,14 @@ impl Operation {
         self.table_entry.operand_size + 1
     }
 
-    pub fn read(cpu: &Cpu, addr: u16) -> Result<Operation> {
-        let raw_opcode = cpu.read(addr);
+    pub fn peek(cpu: &Cpu, addr: u16) -> Result<Operation> {
+        let raw_opcode = cpu.bus.peek(addr);
+        let table_entry = OPCODE_TABLE[raw_opcode as usize];
+        Ok(Operation { addr, table_entry })
+    }
+
+    pub fn load(cpu: &mut Cpu, addr: u16) -> Result<Operation> {
+        let raw_opcode = cpu.bus.read(addr);
         let table_entry = OPCODE_TABLE[raw_opcode as usize];
         Ok(Operation { addr, table_entry })
     }
@@ -414,42 +420,48 @@ const fn is_legal(code: u8, method: &str) -> bool {
 trait AddressMode {
     const OPERAND_SIZE: usize = 0;
 
-    fn addr(cpu: &Cpu, addr: u16) -> u16;
-    fn format(cpu: &Cpu, addr: u16) -> String;
+    /// Technically addr lookup could trigger side-effects when making bus
+    /// reads. However for simplicity we are only allowing immutable access to
+    /// the Cpu to allow addr() to be shared with format().
+    fn addr(_cpu: &Cpu, _addr: u16) -> u16 {
+        unimplemented!()
+    }
 
-    fn load(cpu: &Cpu, addr: u16) -> u8 {
-        cpu.read(Self::addr(cpu, addr))
+    fn load(cpu: &mut Cpu, addr: u16) -> u8 {
+        cpu.bus.read(Self::addr(cpu, addr))
+    }
+
+    fn peek(cpu: &Cpu, addr: u16) -> u8 {
+        cpu.bus.peek(Self::addr(cpu, addr))
     }
 
     fn store(cpu: &mut Cpu, addr: u16, value: u8) {
-        cpu.write(Self::addr(cpu, addr), value)
+        cpu.bus.write(Self::addr(cpu, addr), value)
     }
+
+    fn format(cpu: &Cpu, addr: u16) -> String;
 }
 
 struct Immediate {}
 impl AddressMode for Immediate {
     const OPERAND_SIZE: usize = 1;
 
-    fn addr(_cpu: &Cpu, _addr: u16) -> u16 {
-        unimplemented!();
+    fn load(cpu: &mut Cpu, addr: u16) -> u8 {
+        cpu.bus.read(addr + 1)
     }
 
-    fn load(cpu: &Cpu, addr: u16) -> u8 {
-        cpu.read(addr + 1)
+    fn peek(cpu: &Cpu, addr: u16) -> u8 {
+        cpu.bus.peek(addr + 1)
     }
 
     fn format(cpu: &Cpu, addr: u16) -> String {
-        return format!(" #{:02X}", Self::load(cpu, addr));
+        return format!(" #{:02X}", Self::peek(cpu, addr));
     }
 }
 
 struct Implicit {}
 impl AddressMode for Implicit {
     const OPERAND_SIZE: usize = 0;
-
-    fn addr(_cpu: &Cpu, _addr: u16) -> u16 {
-        unimplemented!();
-    }
 
     fn format(_cpu: &Cpu, _addr: u16) -> String {
         "".to_string()
@@ -460,11 +472,11 @@ struct Acumulator {}
 impl AddressMode for Acumulator {
     const OPERAND_SIZE: usize = 0;
 
-    fn addr(_cpu: &Cpu, _addr: u16) -> u16 {
-        unimplemented!();
+    fn load(cpu: &mut Cpu, _addr: u16) -> u8 {
+        cpu.a
     }
 
-    fn load(cpu: &Cpu, _addr: u16) -> u8 {
+    fn peek(cpu: &Cpu, _addr: u16) -> u8 {
         cpu.a
     }
 
@@ -482,14 +494,14 @@ impl AddressMode for Absolute {
     const OPERAND_SIZE: usize = 2;
 
     fn addr(cpu: &Cpu, addr: u16) -> u16 {
-        cpu.read_u16(addr + 1)
+        cpu.bus.peek_u16(addr + 1)
     }
 
     fn format(cpu: &Cpu, addr: u16) -> String {
         return format!(
             " {:04X} @{:02X}",
             Self::addr(cpu, addr),
-            Self::load(cpu, addr)
+            Self::peek(cpu, addr)
         );
     }
 }
@@ -499,15 +511,15 @@ impl AddressMode for AbsoluteX {
     const OPERAND_SIZE: usize = 2;
 
     fn addr(cpu: &Cpu, addr: u16) -> u16 {
-        cpu.read_u16(addr + 1) + cpu.x as u16
+        cpu.bus.peek_u16(addr + 1).wrapping_add(cpu.x as u16)
     }
 
     fn format(cpu: &Cpu, addr: u16) -> String {
         return format!(
             " {:04X}+X ={:04X} @{:02X}",
-            cpu.read_u16(addr + 1),
+            cpu.bus.peek_u16(addr + 1),
             Self::addr(cpu, addr),
-            Self::load(cpu, addr)
+            Self::peek(cpu, addr)
         );
     }
 }
@@ -517,15 +529,15 @@ impl AddressMode for AbsoluteY {
     const OPERAND_SIZE: usize = 2;
 
     fn addr(cpu: &Cpu, addr: u16) -> u16 {
-        cpu.read_u16(addr + 1).wrapping_add(cpu.y as u16)
+        cpu.bus.peek_u16(addr + 1).wrapping_add(cpu.y as u16)
     }
 
     fn format(cpu: &Cpu, addr: u16) -> String {
         return format!(
             " {:04X}+Y ={:04X} @{:02X}",
-            cpu.read_u16(addr + 1),
+            cpu.bus.peek_u16(addr + 1),
             Self::addr(cpu, addr),
-            Self::load(cpu, addr)
+            Self::peek(cpu, addr)
         );
     }
 }
@@ -535,14 +547,14 @@ impl AddressMode for ZeroPage {
     const OPERAND_SIZE: usize = 1;
 
     fn addr(cpu: &Cpu, addr: u16) -> u16 {
-        cpu.read(addr + 1) as u16
+        cpu.bus.peek(addr + 1) as u16
     }
 
     fn format(cpu: &Cpu, addr: u16) -> String {
         return format!(
             " {:02X} @ {:02X}",
             Self::addr(cpu, addr),
-            Self::load(cpu, addr)
+            Self::peek(cpu, addr)
         );
     }
 }
@@ -552,15 +564,15 @@ impl AddressMode for ZeroPageX {
     const OPERAND_SIZE: usize = 1;
 
     fn addr(cpu: &Cpu, addr: u16) -> u16 {
-        cpu.read(addr + 1).wrapping_add(cpu.x) as u16
+        cpu.bus.peek(addr + 1).wrapping_add(cpu.x) as u16
     }
 
     fn format(cpu: &Cpu, addr: u16) -> String {
         return format!(
             " {:02X}+X ={:04X} @ {:02X}",
-            cpu.read(addr + 1),
+            cpu.bus.peek(addr + 1),
             Self::addr(cpu, addr),
-            Self::load(cpu, addr)
+            Self::peek(cpu, addr)
         );
     }
 }
@@ -570,15 +582,15 @@ impl AddressMode for ZeroPageY {
     const OPERAND_SIZE: usize = 1;
 
     fn addr(cpu: &Cpu, addr: u16) -> u16 {
-        cpu.read(addr + 1).wrapping_add(cpu.y) as u16
+        cpu.bus.peek(addr + 1).wrapping_add(cpu.y) as u16
     }
 
     fn format(cpu: &Cpu, addr: u16) -> String {
         return format!(
             " {:02X}+Y ={:04X} @ {:02X}",
-            cpu.read(addr + 1),
+            cpu.bus.peek(addr + 1),
             Self::addr(cpu, addr),
-            Self::load(cpu, addr)
+            Self::peek(cpu, addr)
         );
     }
 }
@@ -588,7 +600,7 @@ impl AddressMode for Relative {
     const OPERAND_SIZE: usize = 1;
 
     fn addr(cpu: &Cpu, addr: u16) -> u16 {
-        let delta = cpu.read(addr + 1) as i8 as i16;
+        let delta = cpu.bus.peek(addr + 1) as i8 as i16;
         let base_addr = addr + 1 + Self::OPERAND_SIZE as u16;
         if delta > 0 {
             base_addr.wrapping_add(delta.unsigned_abs())
@@ -598,12 +610,12 @@ impl AddressMode for Relative {
     }
 
     fn format(cpu: &Cpu, addr: u16) -> String {
-        let relative_addr = cpu.read(addr + 1) as i8;
+        let relative_addr = cpu.bus.peek(addr + 1) as i8;
         return format!(
             " {:+02X} ={:04X} @ {:02X}",
             relative_addr,
             Self::addr(cpu, addr),
-            Self::load(cpu, addr)
+            Self::peek(cpu, addr)
         );
     }
 }
@@ -613,24 +625,24 @@ impl AddressMode for Indirect {
     const OPERAND_SIZE: usize = 2;
 
     fn addr(cpu: &Cpu, addr: u16) -> u16 {
-        let indirect_addr = cpu.read_u16(addr + 1);
+        let indirect_addr = cpu.bus.peek_u16(addr + 1);
         let bytes = if indirect_addr & 0x00FF == 0x00FF {
             // CPU Bug: Address wraps around inside page.
             let page = indirect_addr & 0xFF00;
-            [cpu.read(indirect_addr), cpu.read(page)]
+            [cpu.bus.peek(indirect_addr), cpu.bus.peek(page)]
         } else {
-            [cpu.read(indirect_addr), cpu.read(indirect_addr + 1)]
+            [cpu.bus.peek(indirect_addr), cpu.bus.peek(indirect_addr + 1)]
         };
         u16::from_le_bytes(bytes)
     }
 
     fn format(cpu: &Cpu, addr: u16) -> String {
-        let indirect_addr = cpu.read_u16(addr + 1);
+        let indirect_addr = cpu.bus.peek_u16(addr + 1);
         return format!(
             " (${:04X}) ={:04X} @ {:02X}",
             indirect_addr,
             Self::addr(cpu, addr),
-            Self::load(cpu, addr)
+            Self::peek(cpu, addr)
         );
     }
 }
@@ -640,25 +652,21 @@ impl AddressMode for IndirectY {
     const OPERAND_SIZE: usize = 1;
 
     fn addr(cpu: &Cpu, addr: u16) -> u16 {
-        // Note: Zero-page address lookup will wrap around from 0xFF to 0x00.
-        // TODO: Implement zero page u16 reads in bus
-        let indirect_addr = cpu.read(addr + 1);
-        let bytes = [
-            cpu.read(indirect_addr as u16),
-            cpu.read(indirect_addr.wrapping_add(1) as u16),
-        ];
-        u16::from_le_bytes(bytes).wrapping_add(cpu.y as u16)
+        let indirect_addr = cpu.bus.peek(addr + 1);
+        cpu.bus
+            .zero_page_peek_u16(indirect_addr)
+            .wrapping_add(cpu.y as u16)
     }
 
     fn format(cpu: &Cpu, addr: u16) -> String {
-        let indirect_addr = cpu.read(addr + 1);
-        let indirect = cpu.read_u16(indirect_addr as u16);
+        let indirect_addr = cpu.bus.peek(addr + 1);
+        let indirect = cpu.bus.peek_u16(indirect_addr as u16);
         return format!(
             " (${:02X})={:04X}+Y ={:04X} @ {:02X}",
             indirect_addr,
             indirect,
             Self::addr(cpu, addr),
-            Self::load(cpu, addr)
+            Self::peek(cpu, addr)
         );
     }
 }
@@ -670,21 +678,21 @@ impl AddressMode for IndirectX {
     fn addr(cpu: &Cpu, addr: u16) -> u16 {
         // Note: Zero-page address lookup will wrap around from 0xFF to 0x00.
         // TODO: Implement zero page u16 reads in bus
-        let indirect_addr = cpu.read(addr + 1).wrapping_add(cpu.x);
+        let indirect_addr = cpu.bus.peek(addr + 1).wrapping_add(cpu.x);
         let bytes = [
-            cpu.read(indirect_addr as u16),
-            cpu.read(indirect_addr.wrapping_add(1) as u16),
+            cpu.bus.peek(indirect_addr as u16),
+            cpu.bus.peek(indirect_addr.wrapping_add(1) as u16),
         ];
         u16::from_le_bytes(bytes)
     }
 
     fn format(cpu: &Cpu, addr: u16) -> String {
-        let indirect_addr = cpu.read(addr + 1);
+        let indirect_addr = cpu.bus.peek(addr + 1);
         return format!(
             " (${:02X}+X) ={:04X} @{:02X}",
             indirect_addr,
             Self::addr(cpu, addr),
-            Self::load(cpu, addr)
+            Self::peek(cpu, addr)
         );
     }
 }
