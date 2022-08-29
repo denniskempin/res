@@ -13,8 +13,6 @@ impl Cartridge {
     }
 
     pub fn load_ines(&mut self, raw: &[u8]) -> Result<()> {
-        println!("{:?}", &raw[0..16]);
-
         if raw[0] != b'N' || raw[1] != b'E' || raw[2] != b'S' {
             return Err(anyhow!("Expected NES header."));
         }

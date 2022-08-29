@@ -17,6 +17,9 @@ pub struct Trace {
     pub y: u8,
     pub p: StatusFlags,
     pub sp: u8,
+    pub ppu_scanline: usize,
+    pub ppu_cycle: usize,
+    pub cpu_cycle: usize,
 }
 
 impl PartialEq for Trace {
@@ -29,11 +32,14 @@ impl PartialEq for Trace {
             && self.y == other.y
             && self.p == other.p
             && self.sp == other.sp
+            && self.ppu_scanline == other.ppu_scanline
+            && self.ppu_cycle == other.ppu_cycle
+            && self.cpu_cycle == other.cpu_cycle
     }
 }
 
 static TRACE_REGEX: &str =
-    "(.{4})  (.{8}) ([ *])(.{30})  A:(.{2}) X:(.{2}) Y:(.{2}) P:(.{2}) SP:(.{2})";
+    "(.{4})  (.{8}) ([ *])(.{30})  A:(.{2}) X:(.{2}) Y:(.{2}) P:(.{2}) SP:(.{2}) PPU:(.{3}),(.{3}) CYC:([0-9]+)";
 
 impl Display for Trace {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -46,7 +52,7 @@ impl Display for Trace {
         let legal_str = if self.legal { " " } else { "*" };
         write!(
             f,
-            "{:04X}  {:<8} {}{:<30}  A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
+            "{:04X}  {:<8} {}{:<30}  A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} PPU:{:>3},{:>3} CYC:{}",
             self.pc,
             opcode_raw_str,
             legal_str,
@@ -55,7 +61,10 @@ impl Display for Trace {
             self.x,
             self.y,
             self.p,
-            self.sp
+            self.sp,
+            self.ppu_scanline,
+            self.ppu_cycle,
+            self.cpu_cycle
         )
     }
 }
@@ -82,6 +91,9 @@ impl Trace {
             y: u8::from_str_radix(&captures[7], 16)?,
             p: StatusFlags::from_bits_truncate(u8::from_str_radix(&captures[8], 16)?),
             sp: u8::from_str_radix(&captures[9], 16)?,
+            ppu_scanline: captures[10].trim().parse()?,
+            ppu_cycle: captures[11].trim().parse()?,
+            cpu_cycle: captures[12].parse()?,
         })
     }
 }
@@ -96,7 +108,7 @@ mod test {
     pub fn test_parse_fmt_trace() {
         let trace_str = concat!(
             "C000  4C F5 C5  JMP $C5F5                       ",
-            "A:00 X:00 Y:00 P:24 SP:FD"
+            "A:00 X:00 Y:00 P:24 SP:FD PPU:  0, 21 CYC:7"
         );
         let trace = Trace {
             pc: 0xC000,
@@ -108,6 +120,9 @@ mod test {
             y: 0,
             p: StatusFlags::from_bits_truncate(0x24),
             sp: 0xFD,
+            ppu_scanline: 0,
+            ppu_cycle: 21,
+            cpu_cycle: 7,
         };
         //assert_eq!(trace_str, format!("{trace}"));
         assert_eq!(trace, Trace::from_log_line(trace_str).unwrap());

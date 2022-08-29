@@ -14,6 +14,8 @@ pub struct Ppu {
     pub vram: [u8; 2048],
     pub oam_data: [u8; 256],
     pub internal_data_buffer: u8,
+    pub cycle: usize,
+    pub scanline: usize,
 
     pub control_register: ControlRegister,
     pub status_register: StatusRegister,
@@ -34,13 +36,30 @@ impl Ppu {
             oam_data: [0; 256],
             palette_table: [0; 32],
             internal_data_buffer: 0,
+            cycle: 0,
+            scanline: 0,
+
             control_register: ControlRegister::default(),
             status_register: StatusRegister::default(),
             address_register: AddressRegister::default(),
         }
     }
 
-    pub fn tick(&mut self) {}
+    pub fn tick(&mut self, cycles: usize) {
+        self.cycle += cycles;
+        if self.cycle >= 341 {
+            self.cycle -= 341;
+            self.scanline += 1;
+
+            if self.scanline == 241 {
+                // TODO generate NMI interrupt
+            }
+
+            if self.scanline >= 262 {
+                self.scanline = 0;
+            }
+        }
+    }
 
     pub fn read_ppu_memory(&self, addr: u16) -> u8 {
         match addr {

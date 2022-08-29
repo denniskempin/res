@@ -39,6 +39,10 @@ impl CpuBus {
         }
     }
 
+    pub fn tick(&mut self, cpu_cycles: usize) {
+        self.ppu.tick(cpu_cycles * 3);
+    }
+
     /// Read a single byte from the bus. Note that reads require a mutable bus
     /// as they may have side-effects.
     pub fn read(&mut self, addr: u16) -> u8 {
@@ -139,6 +143,7 @@ pub struct Cpu {
     pub program_counter: u16,
     pub halt: bool,
     pub sp: u8,
+    pub cycle: usize,
 
     pub bus: CpuBus,
 }
@@ -153,6 +158,7 @@ impl Default for Cpu {
             program_counter: 0,
             halt: false,
             sp: 0xFD,
+            cycle: 0,
             bus: Default::default(),
         }
     }
@@ -168,13 +174,16 @@ impl Cpu {
         }
     }
 
-    pub fn tick(&mut self) -> Result<bool> {
-        self.execute_one()
+    pub fn boot(&mut self) {
+        self.cycle += 7;
+        self.bus.tick(7);
     }
 
     pub fn execute_one(&mut self) -> Result<bool> {
+        let last_cpu_cycle = self.cycle;
         let operation = self.next_operation()?;
         operation.execute(self);
+        self.bus.tick(self.cycle - last_cpu_cycle);
         Ok(!self.halt)
     }
 
@@ -198,10 +207,5 @@ impl Cpu {
         let stack_entries = 0xFF_u16 - self.sp as u16;
         self.bus
             .peek_slice(Self::STACK_ADDR + self.sp as u16 + 1, stack_entries)
-    }
-
-    pub fn print_stack(&mut self) {
-        let formatted: Vec<String> = self.peek_stack().map(|s| format!("{:02X}", s)).collect();
-        println!("{:?}", formatted);
     }
 }

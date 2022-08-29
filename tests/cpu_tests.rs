@@ -1,10 +1,9 @@
+use ners::nes::trace::Trace;
+use ners::nes::System;
 use std::fs::File;
 use std::io::BufRead;
 use std::io::{self};
 use std::path::Path;
-
-use ners::nes::trace::Trace;
-use ners::nes::System;
 
 #[test]
 pub fn test_basic_program() {
@@ -55,6 +54,6 @@ pub fn compare_to_log(mut system: System, log_file: &str, goal_count: usize) {
         let actual_trace = system.trace().unwrap();
         println!("{i:6} Act: {actual_trace}");
         assert_eq!(expected_trace, actual_trace);
-        system.tick().unwrap();
+        system.cpu.execute_one().unwrap();
     }
 }

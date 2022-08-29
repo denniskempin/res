@@ -8,24 +8,19 @@ use self::cpu::Cpu;
 use self::cpu::Operation;
 use self::trace::Trace;
 use anyhow::Result;
+
 use std::fs;
 use std::path::Path;
 
 #[derive(Default)]
 pub struct System {
     pub cpu: Cpu,
-    pub clock: u64,
+    pub last_apu_cycle: u32,
 }
 
 impl System {
     pub fn tick(&mut self) -> Result<bool> {
-        if !self.cpu.tick()? {
-            return Ok(false);
-        }
-        self.cpu.bus.ppu.tick();
-        self.cpu.bus.ppu.tick();
-        self.cpu.bus.ppu.tick();
-        Ok(true)
+        self.cpu.execute_one()
     }
 
     pub fn trace(&self) -> Result<Trace> {
@@ -44,6 +39,9 @@ impl System {
                 y: self.cpu.y,
                 p: self.cpu.status_flags,
                 sp: self.cpu.sp,
+                ppu_scanline: self.cpu.bus.ppu.scanline,
+                ppu_cycle: self.cpu.bus.ppu.cycle,
+                cpu_cycle: self.cpu.cycle,
             })
         } else {
             Ok(Trace {
@@ -56,6 +54,9 @@ impl System {
                 y: self.cpu.y,
                 p: self.cpu.status_flags,
                 sp: self.cpu.sp,
+                ppu_scanline: self.cpu.bus.ppu.scanline,
+                ppu_cycle: self.cpu.bus.ppu.cycle,
+                cpu_cycle: self.cpu.cycle,
             })
         }
     }
@@ -63,12 +64,14 @@ impl System {
     pub fn with_program(program: &[u8]) -> Result<System> {
         let mut system = System::default();
         system.load_program(program)?;
+        system.cpu.boot();
         Ok(system)
     }
 
     pub fn with_ines(path: &Path) -> Result<System> {
         let mut system = System::default();
         system.load_ines(path)?;
+        system.cpu.boot();
         Ok(system)
     }
 
