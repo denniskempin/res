@@ -5,6 +5,7 @@ use std::rc::Rc;
 use super::cartridge::Cartridge;
 
 const CONTROL_REGISTER_ADDR: u16 = 0x2000;
+const STATUS_REGISTER_ADDR: u16 = 0x2002;
 const ADDRESS_REGISTER_ADDR: u16 = 0x2006;
 const DATA_REGISTER_ADDR: u16 = 0x2007;
 
@@ -20,6 +21,8 @@ pub struct Ppu {
     pub control_register: ControlRegister,
     pub status_register: StatusRegister,
     pub address_register: AddressRegister,
+
+    pub nmi_interrupt: bool,
 }
 
 impl Default for Ppu {
@@ -42,6 +45,8 @@ impl Ppu {
             control_register: ControlRegister::default(),
             status_register: StatusRegister::default(),
             address_register: AddressRegister::default(),
+
+            nmi_interrupt: false,
         }
     }
 
@@ -52,7 +57,19 @@ impl Ppu {
             self.scanline += 1;
 
             if self.scanline == 241 {
-                // TODO generate NMI interrupt
+                println!("VBLANK_STARTED");
+                self.status_register.insert(StatusRegister::VBLANK_STARTED);
+                if self
+                    .control_register
+                    .contains(ControlRegister::GENERATE_NMI)
+                {
+                    self.nmi_interrupt = true;
+                }
+            }
+
+            if self.scanline == 261 {
+                println!("VBLANK_ENDED");
+                self.status_register.remove(StatusRegister::VBLANK_STARTED);
             }
 
             if self.scanline >= 262 {
@@ -85,9 +102,17 @@ impl Ppu {
         buffer
     }
 
+    pub fn read_status_register(&mut self) -> u8 {
+        let status = self.status_register.bits;
+        println!("Read {:?}", self.status_register);
+        self.status_register.remove(StatusRegister::VBLANK_STARTED);
+        status
+    }
+
     pub fn cpu_bus_peek(&self, addr: u16) -> u8 {
         match addr {
             CONTROL_REGISTER_ADDR => self.control_register.bits,
+            STATUS_REGISTER_ADDR => self.status_register.bits,
             _ => {
                 println!("Warning: Invalid peek/read from PPU at {addr:04X}");
                 0
@@ -98,6 +123,7 @@ impl Ppu {
     pub fn cpu_bus_read(&mut self, addr: u16) -> u8 {
         match addr {
             DATA_REGISTER_ADDR => self.read_data_register(),
+            STATUS_REGISTER_ADDR => self.read_status_register(),
             _ => self.cpu_bus_peek(addr),
         }
     }
@@ -109,6 +135,15 @@ impl Ppu {
             }
             ADDRESS_REGISTER_ADDR => self.address_register.write(value),
             _ => println!("Warning: Invalid write to PPU at {addr:04X}"),
+        }
+    }
+
+    pub fn poll_nmi_interrupt(&mut self) -> bool {
+        if self.nmi_interrupt {
+            self.nmi_interrupt = false;
+            true
+        } else {
+            false
         }
     }
 }

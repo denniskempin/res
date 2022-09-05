@@ -1,6 +1,9 @@
 use std::path::Path;
 
-use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
+use criterion::criterion_group;
+use criterion::criterion_main;
+use criterion::BatchSize;
+use criterion::Criterion;
 use ners::nes::System;
 
 fn criterion_benchmark(c: &mut Criterion) {

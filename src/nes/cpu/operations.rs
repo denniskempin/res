@@ -453,6 +453,11 @@ trait AddressMode {
         }
     }
 
+    fn advance_clock(cpu: &mut Cpu, addr: u16, mode: MemoryAccessMode) {
+        let cycle_count = Self::cycle_count(cpu, addr, mode);
+        cpu.advance_clock(cycle_count);
+    }
+
     fn peek_operand(cpu: &Cpu, addr: u16) -> u8 {
         cpu.bus.peek(Self::load_addr(cpu, addr))
     }
@@ -808,9 +813,9 @@ pub fn update_negative_zero_flags(cpu: &mut Cpu, value: u8) {
 fn branch(cpu: &mut Cpu, target_addr: u16) {
     // Branch across pages take one more cycle
     if target_addr & 0xFF00 == cpu.program_counter & 0xFF00 {
-        cpu.cycle += 1;
+        cpu.advance_clock(1);
     } else {
-        cpu.cycle += 2;
+        cpu.advance_clock(2);
     }
     cpu.program_counter = target_addr;
 }
@@ -822,218 +827,214 @@ fn branch(cpu: &mut Cpu, target_addr: u16) {
 
 fn jmp<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
     cpu.program_counter = AM::load_addr(cpu, addr);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Addr);
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Addr);
 }
 
 fn jsr<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
-    let bytes = (cpu.program_counter - 1).to_le_bytes();
-    cpu.stack_push(bytes[1]);
-    cpu.stack_push(bytes[0]);
+    cpu.stack_push_u16(cpu.program_counter - 1);
     cpu.program_counter = AM::load_addr(cpu, addr);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Addr) + 3;
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Addr);
+    cpu.advance_clock(3);
 }
 
 fn rts<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
-    let bytes = [cpu.stack_pop(), cpu.stack_pop()];
-    // We are reading the address back in inverse order, hence big endian.
-    cpu.program_counter = u16::from_le_bytes(bytes) + 1;
-    cpu.cycle += 6;
+    cpu.program_counter = cpu.stack_pop_u16() + 1;
+    cpu.advance_clock(6);
 }
 
 fn rti<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
     plp::<AM>(cpu, addr);
-    let bytes = [cpu.stack_pop(), cpu.stack_pop()];
-    cpu.program_counter = u16::from_le_bytes(bytes);
-    cpu.cycle += 2;
+    cpu.program_counter = cpu.stack_pop_u16();
+    cpu.advance_clock(2);
 }
 
 // ST* (Store)
 
 fn sta<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Write);
     AM::store_operand(cpu, addr, cpu.a);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Write);
 }
 
 fn stx<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Write);
     AM::store_operand(cpu, addr, cpu.x);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Write);
 }
 
 fn sty<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Write);
     AM::store_operand(cpu, addr, cpu.y);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Write);
 }
 
 // LD* (Load)
 
 fn lda<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Read);
     cpu.a = AM::load_operand(cpu, addr);
     update_negative_zero_flags(cpu, cpu.a);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Read);
 }
 
 fn ldy<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Read);
     cpu.y = AM::load_operand(cpu, addr);
     update_negative_zero_flags(cpu, cpu.y);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Read);
 }
 
 fn ldx<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Read);
     cpu.x = AM::load_operand(cpu, addr);
     update_negative_zero_flags(cpu, cpu.x);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Read);
 }
 
 // IN* (Increment)
 
 fn inc<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Modify);
     let value = AM::load_operand(cpu, addr).wrapping_add(1);
     AM::store_operand(cpu, addr, value);
     update_negative_zero_flags(cpu, value);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Modify);
 }
 
 fn inx<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Modify);
     cpu.x = cpu.x.wrapping_add(1);
     update_negative_zero_flags(cpu, cpu.x);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Modify);
 }
 
 fn iny<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Modify);
     cpu.y = cpu.y.wrapping_add(1);
     update_negative_zero_flags(cpu, cpu.y);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Modify);
 }
 
 // DE* (Decrement)
 
 fn dec<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Modify);
     let value = AM::load_operand(cpu, addr).wrapping_sub(1);
     AM::store_operand(cpu, addr, value);
     update_negative_zero_flags(cpu, value);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Modify);
 }
 
 fn dex<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Modify);
     cpu.x = cpu.x.wrapping_sub(1);
     update_negative_zero_flags(cpu, cpu.x);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Modify);
 }
 
 fn dey<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Modify);
     cpu.y = cpu.y.wrapping_sub(1);
     update_negative_zero_flags(cpu, cpu.y);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Modify);
 }
 
 // SE* / CL* (Set / clear status bits)
 
 fn sed<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Read);
     cpu.status_flags.insert(StatusFlags::DECIMAL);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Read);
 }
 
 fn cld<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Read);
     cpu.status_flags.remove(StatusFlags::DECIMAL);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Read);
 }
 
 fn sec<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Read);
     cpu.status_flags.insert(StatusFlags::CARRY);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Read);
 }
 
 fn clc<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Read);
     cpu.status_flags.remove(StatusFlags::CARRY);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Read);
 }
 
 fn clv<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Read);
     cpu.status_flags.remove(StatusFlags::OVERFLOW);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Read);
 }
 
 fn cli<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Read);
     cpu.status_flags.remove(StatusFlags::INTERRUPT);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Read);
 }
 
 // B** (Branch)
 
 fn bcs<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Addr);
     if cpu.status_flags.contains(StatusFlags::CARRY) {
         branch(cpu, AM::load_addr(cpu, addr));
     }
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Addr);
 }
 
 fn bcc<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Addr);
     if !cpu.status_flags.contains(StatusFlags::CARRY) {
         branch(cpu, AM::load_addr(cpu, addr));
     }
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Addr);
 }
 
 fn beq<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Addr);
     if cpu.status_flags.contains(StatusFlags::ZERO) {
         branch(cpu, AM::load_addr(cpu, addr));
     }
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Addr);
 }
 
 fn bne<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Addr);
     if !cpu.status_flags.contains(StatusFlags::ZERO) {
         branch(cpu, AM::load_addr(cpu, addr));
     }
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Addr);
 }
 
 fn bmi<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Addr);
     if cpu.status_flags.contains(StatusFlags::NEGATIVE) {
         branch(cpu, AM::load_addr(cpu, addr));
     }
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Addr);
 }
 
 fn bpl<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Addr);
     if !cpu.status_flags.contains(StatusFlags::NEGATIVE) {
         branch(cpu, AM::load_addr(cpu, addr));
     }
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Addr);
 }
 
 fn bvs<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Addr);
     if cpu.status_flags.contains(StatusFlags::OVERFLOW) {
         branch(cpu, AM::load_addr(cpu, addr));
     }
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Addr);
 }
 
 fn bvc<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Addr);
     if !cpu.status_flags.contains(StatusFlags::OVERFLOW) {
         branch(cpu, AM::load_addr(cpu, addr));
     }
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Addr);
 }
 
 // PH* (Push), PL* (Pull)
 
 fn pha<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
     cpu.stack_push(cpu.a);
-    cpu.cycle += 3;
+    cpu.advance_clock(3);
 }
 
 fn php<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
     let mut value = cpu.status_flags;
     value.insert(StatusFlags::BREAK);
     cpu.stack_push(value.bits);
-    cpu.cycle += 3;
+    cpu.advance_clock(3);
 }
 
 fn pla<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
     cpu.a = cpu.stack_pop();
     update_negative_zero_flags(cpu, cpu.a);
-    cpu.cycle += 4;
+    cpu.advance_clock(4);
 }
 
 fn plp<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
@@ -1044,12 +1045,13 @@ fn plp<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
     );
     value.insert(StatusFlags::UNUSED);
     cpu.status_flags = value;
-    cpu.cycle += 4;
+    cpu.advance_clock(4);
 }
 
 // add / sub
 
 fn adc<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Read);
     let carry: u16 = if cpu.status_flags.contains(StatusFlags::CARRY) {
         1
     } else {
@@ -1065,10 +1067,10 @@ fn adc<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
     );
     cpu.a = result as u8;
     update_negative_zero_flags(cpu, cpu.a);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Read);
 }
 
 fn sbc<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Read);
     let carry: u16 = if cpu.status_flags.contains(StatusFlags::CARRY) {
         1
     } else {
@@ -1086,75 +1088,75 @@ fn sbc<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
     );
     cpu.a = result as u8;
     update_negative_zero_flags(cpu, cpu.a);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Read);
 }
 
 // Bit-wise operations
 
 fn and<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Read);
     cpu.a &= AM::load_operand(cpu, addr);
     update_negative_zero_flags(cpu, cpu.a);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Read);
 }
 
 fn ora<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Read);
     cpu.a |= AM::load_operand(cpu, addr);
     update_negative_zero_flags(cpu, cpu.a);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Read);
 }
 
 fn eor<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Read);
     cpu.a ^= AM::load_operand(cpu, addr);
     update_negative_zero_flags(cpu, cpu.a);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Read);
 }
 
 // C** (Compare)
 
 fn cmp<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Read);
     let (value, overflow) = cpu.a.overflowing_sub(AM::load_operand(cpu, addr));
     update_negative_zero_flags(cpu, value);
     cpu.status_flags.set(StatusFlags::CARRY, !overflow);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Read);
 }
 
 fn cpx<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Read);
     let (value, overflow) = cpu.x.overflowing_sub(AM::load_operand(cpu, addr));
     update_negative_zero_flags(cpu, value);
     cpu.status_flags.set(StatusFlags::CARRY, !overflow);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Read);
 }
 
 fn cpy<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Read);
     let (value, overflow) = cpu.y.overflowing_sub(AM::load_operand(cpu, addr));
     update_negative_zero_flags(cpu, value);
     cpu.status_flags.set(StatusFlags::CARRY, !overflow);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Read);
 }
 
 // Shifts
 
 fn lsr<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Modify);
     let operand = AM::load_operand(cpu, addr);
     let (result, _) = operand.overflowing_shr(1);
     AM::store_operand(cpu, addr, result);
     update_negative_zero_flags(cpu, result);
     cpu.status_flags
         .set(StatusFlags::CARRY, (operand & 0x01) != 0);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Modify);
 }
 
 fn asl<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Modify);
     let operand = AM::load_operand(cpu, addr);
     let (result, _) = operand.overflowing_shl(1);
     AM::store_operand(cpu, addr, result);
     update_negative_zero_flags(cpu, result);
     cpu.status_flags
         .set(StatusFlags::CARRY, (operand & 0x80) != 0);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Modify);
 }
 
 fn ror<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Modify);
     let operand = AM::load_operand(cpu, addr);
     let (mut result, _) = operand.overflowing_shr(1);
     if cpu.status_flags.contains(StatusFlags::CARRY) {
@@ -1164,10 +1166,10 @@ fn ror<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
     update_negative_zero_flags(cpu, result);
     cpu.status_flags
         .set(StatusFlags::CARRY, (operand & 0x01) != 0);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Modify);
 }
 
 fn rol<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Modify);
     let operand = AM::load_operand(cpu, addr);
     let (mut result, _) = operand.overflowing_shl(1);
     if cpu.status_flags.contains(StatusFlags::CARRY) {
@@ -1177,7 +1179,6 @@ fn rol<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
     update_negative_zero_flags(cpu, result);
     cpu.status_flags
         .set(StatusFlags::CARRY, (operand & 0x80) != 0);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Modify);
 }
 
 // Register Transfers
@@ -1185,41 +1186,42 @@ fn rol<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
 fn txa<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
     cpu.a = cpu.x;
     update_negative_zero_flags(cpu, cpu.a);
-    cpu.cycle += 2;
+    cpu.advance_clock(2);
 }
 
 fn tax<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
     cpu.x = cpu.a;
     update_negative_zero_flags(cpu, cpu.x);
-    cpu.cycle += 2;
+    cpu.advance_clock(2);
 }
 
 fn tay<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
     cpu.y = cpu.a;
     update_negative_zero_flags(cpu, cpu.y);
-    cpu.cycle += 2;
+    cpu.advance_clock(2);
 }
 
 fn tya<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
     cpu.a = cpu.y;
     update_negative_zero_flags(cpu, cpu.a);
-    cpu.cycle += 2;
+    cpu.advance_clock(2);
 }
 
 fn tsx<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
     cpu.x = cpu.sp;
     update_negative_zero_flags(cpu, cpu.x);
-    cpu.cycle += 2;
+    cpu.advance_clock(2);
 }
 
 fn txs<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
     cpu.sp = cpu.x;
-    cpu.cycle += 2;
+    cpu.advance_clock(2);
 }
 
 // Misc Operations
 
 fn bit<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Read);
     let value = AM::load_operand(cpu, addr);
     cpu.status_flags.set(
         StatusFlags::NEGATIVE,
@@ -1231,7 +1233,6 @@ fn bit<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
     );
     cpu.status_flags
         .set(StatusFlags::ZERO, (value & cpu.a) == 0);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Read);
 }
 
 fn hlt<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
@@ -1239,11 +1240,11 @@ fn hlt<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
 }
 
 fn sei<AM: AddressMode>(cpu: &mut Cpu, _addr: u16) {
-    cpu.cycle += 2;
+    cpu.advance_clock(2);
 }
 
 fn nop<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Read);
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Read);
 }
 
 // Illegal Instructions
@@ -1253,27 +1254,28 @@ fn ill<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
 }
 
 fn lax<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Read);
     cpu.a = AM::load_operand(cpu, addr);
     cpu.x = cpu.a;
     update_negative_zero_flags(cpu, cpu.x);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Read);
 }
 
 fn sax<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Write);
     AM::store_operand(cpu, addr, cpu.a & cpu.x);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Write);
 }
 
 fn dcp<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Modify);
     let value = AM::load_operand(cpu, addr).wrapping_sub(1);
     AM::store_operand(cpu, addr, value);
     let (cmp, overflow) = cpu.a.overflowing_sub(value);
     update_negative_zero_flags(cpu, cmp);
     cpu.status_flags.set(StatusFlags::CARRY, !overflow);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Modify);
 }
 
 fn isc<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Modify);
     let value = AM::load_operand(cpu, addr).wrapping_add(1);
     AM::store_operand(cpu, addr, value);
     let carry: u16 = if cpu.status_flags.contains(StatusFlags::CARRY) {
@@ -1291,10 +1293,10 @@ fn isc<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
     );
     cpu.a = result as u8;
     update_negative_zero_flags(cpu, cpu.a);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Modify);
 }
 
 fn slo<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Modify);
     let operand = AM::load_operand(cpu, addr);
     let (result, _) = operand.overflowing_shl(1);
     AM::store_operand(cpu, addr, result);
@@ -1302,10 +1304,10 @@ fn slo<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
     update_negative_zero_flags(cpu, cpu.a);
     cpu.status_flags
         .set(StatusFlags::CARRY, (operand & 0x80) != 0);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Modify);
 }
 
 fn rla<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Modify);
     let operand = AM::load_operand(cpu, addr);
     let (mut result, _) = operand.overflowing_shl(1);
     if cpu.status_flags.contains(StatusFlags::CARRY) {
@@ -1316,10 +1318,10 @@ fn rla<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
     update_negative_zero_flags(cpu, cpu.a);
     cpu.status_flags
         .set(StatusFlags::CARRY, (operand & 0x80) != 0);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Modify);
 }
 
 fn rra<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Modify);
     let operand = AM::load_operand(cpu, addr);
     let (mut result, _) = operand.overflowing_shr(1);
     if cpu.status_flags.contains(StatusFlags::CARRY) {
@@ -1337,10 +1339,10 @@ fn rra<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
     );
     cpu.a = result as u8;
     update_negative_zero_flags(cpu, cpu.a);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Modify);
 }
 
 fn sre<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
+    AM::advance_clock(cpu, addr, MemoryAccessMode::Modify);
     let operand = AM::load_operand(cpu, addr);
     let (result, _) = operand.overflowing_shr(1);
     AM::store_operand(cpu, addr, result);
@@ -1348,7 +1350,6 @@ fn sre<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
         .set(StatusFlags::CARRY, (operand & 0x01) != 0);
     cpu.a ^= result;
     update_negative_zero_flags(cpu, cpu.a);
-    cpu.cycle += AM::cycle_count(cpu, addr, MemoryAccessMode::Modify);
 }
 
 fn sha<AM: AddressMode>(_cpu: &mut Cpu, _addr: u16) {

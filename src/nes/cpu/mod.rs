@@ -43,6 +43,10 @@ impl CpuBus {
         self.ppu.tick(cpu_cycles * 3);
     }
 
+    pub fn poll_nmi_interrupt(&mut self) -> bool {
+        self.ppu.poll_nmi_interrupt()
+    }
+
     /// Read a single byte from the bus. Note that reads require a mutable bus
     /// as they may have side-effects.
     pub fn read(&mut self, addr: u16) -> u8 {
@@ -130,6 +134,15 @@ bitflags! {
         const ZERO = 0b0000_0010;
         const CARRY = 0b0000_0001;
     }
+
+}
+#[derive(Copy, Clone)]
+enum InterruptVector {
+    Nmi = 0xFFFA,
+    #[allow(dead_code)]
+    Reset = 0xFFFC,
+    #[allow(dead_code)]
+    Irq = 0xFFFE,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -180,17 +193,37 @@ impl Cpu {
     }
 
     pub fn execute_one(&mut self) -> Result<bool> {
-        let last_cpu_cycle = self.cycle;
         let operation = self.next_operation()?;
         operation.execute(self);
-        self.bus.tick(self.cycle - last_cpu_cycle);
+        if self.bus.poll_nmi_interrupt() {
+            self.stack_push_u16(self.program_counter);
+            self.stack_push(self.status_flags.bits());
+            self.status_flags.insert(StatusFlags::INTERRUPT);
+            self.program_counter = self.bus.read_u16(InterruptVector::Nmi as u16);
+            self.advance_clock(2);
+        }
         Ok(!self.halt)
+    }
+
+    pub fn advance_clock(&mut self, cycles: usize) {
+        self.cycle += cycles;
+        self.bus.tick(cycles);
     }
 
     fn next_operation(&mut self) -> Result<Operation> {
         let operation = Operation::load(self, self.program_counter)?;
         self.program_counter += operation.size() as u16;
         Ok(operation)
+    }
+
+    fn stack_push_u16(&mut self, value: u16) {
+        let bytes = value.to_le_bytes();
+        self.stack_push(bytes[1]);
+        self.stack_push(bytes[0]);
+    }
+
+    fn stack_pop_u16(&mut self) -> u16 {
+        u16::from_le_bytes([self.stack_pop(), self.stack_pop()])
     }
 
     fn stack_push(&mut self, value: u8) {
