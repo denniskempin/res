@@ -57,7 +57,6 @@ impl Ppu {
             self.scanline += 1;
 
             if self.scanline == 241 {
-                println!("VBLANK_STARTED");
                 self.status_register.insert(StatusRegister::VBLANK_STARTED);
                 if self
                     .control_register
@@ -68,7 +67,6 @@ impl Ppu {
             }
 
             if self.scanline == 261 {
-                println!("VBLANK_ENDED");
                 self.status_register.remove(StatusRegister::VBLANK_STARTED);
             }
 
@@ -104,7 +102,6 @@ impl Ppu {
 
     pub fn read_status_register(&mut self) -> u8 {
         let status = self.status_register.bits;
-        println!("Read {:?}", self.status_register);
         self.status_register.remove(StatusRegister::VBLANK_STARTED);
         status
     }

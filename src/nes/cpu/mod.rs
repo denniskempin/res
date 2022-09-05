@@ -81,7 +81,7 @@ impl CpuBus {
             0x0000..=0x1FFF => self.ram[addr as usize & 0b0000_0111_1111_1111] = value,
             0x2000..=0x3FFF => self.ppu.cpu_bus_write(addr, value),
             0x4000..=0x4017 => self.apu.cpu_bus_write(addr, value),
-            0x8000..=0xFFFF => self.cartridge.cpu_bus_write(addr, value),
+            0x6000..=0xFFFF => self.cartridge.cpu_bus_write(addr, value),
             _ => panic!("Warning. Illegal write to: ${:04X}", addr),
         }
     }
@@ -92,7 +92,7 @@ impl CpuBus {
             0x0000..=0x1FFF => self.ram[addr as usize & 0b0000_0111_1111_1111],
             0x2000..=0x3FFF => self.ppu.cpu_bus_peek(addr),
             0x4000..=0x4017 => self.apu.cpu_bus_peek(addr),
-            0x8000..=0xFFFF => self.cartridge.cpu_bus_peek(addr),
+            0x6000..=0xFFFF => self.cartridge.cpu_bus_peek(addr),
             _ => panic!("Warning. Illegal peek from: ${:04X}", addr),
         }
     }

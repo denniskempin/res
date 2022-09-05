@@ -4,6 +4,7 @@ use anyhow::Result;
 #[derive(Default)]
 pub struct Cartridge {
     pub prg: Vec<u8>,
+    pub prg_ram: Vec<u8>,
     pub chr: Vec<u8>,
 }
 
@@ -33,20 +34,30 @@ impl Cartridge {
 
         self.prg = raw[prg_start..prg_end].to_vec();
         self.chr = raw[prg_end..chr_end].to_vec();
+        self.prg_ram.resize(8 * 1024, 0);
 
         Ok(())
     }
 
     pub fn cpu_bus_peek(&self, addr: u16) -> u8 {
-        let addr = addr as usize % self.prg.len();
-        self.prg[addr]
+        match addr {
+            0x6000..=0x7FFF => self.prg_ram[addr as usize - 0x6000],
+            0x8000..=0xFFFF => {
+                let addr = addr as usize % self.prg.len();
+                self.prg[addr]
+            }
+            _ => panic!("Warning. Illegal peek from: ${:04X}", addr),
+        }
     }
 
     pub fn cpu_bus_read(&mut self, addr: u16) -> u8 {
         self.cpu_bus_peek(addr)
     }
 
-    pub fn cpu_bus_write(&mut self, addr: u16, _: u8) {
-        panic!("Illegal write to rom device at {addr:04X}.");
+    pub fn cpu_bus_write(&mut self, addr: u16, value: u8) {
+        match addr {
+            0x6000..=0x7FFF => self.prg_ram[addr as usize - 0x6000] = value,
+            _ => panic!("Warning. Illegal write to: ${:04X}", addr),
+        };
     }
 }
