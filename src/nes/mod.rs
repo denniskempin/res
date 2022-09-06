@@ -81,13 +81,13 @@ impl System {
     }
 
     pub fn load_program(&mut self, program: &[u8]) -> Result<()> {
-        self.cpu.bus.cartridge.load_program(program);
+        self.cpu.bus.cartridge.borrow_mut().load_program(program);
         self.reset()
     }
 
     pub fn load_ines(&mut self, path: &Path) -> Result<()> {
         let ines_file = fs::read(path)?;
-        self.cpu.bus.cartridge.load_ines(&ines_file)?;
+        self.cpu.bus.cartridge.borrow_mut().load_ines(&ines_file)?;
         self.reset()
     }
 

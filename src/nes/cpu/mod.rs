@@ -1,5 +1,8 @@
 mod operations;
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 pub use operations::Operation;
 
 use super::apu::Apu;
@@ -13,32 +16,24 @@ use bitflags::bitflags;
 
 pub struct CpuBus {
     pub ram: [u8; 0x2000],
-    pub cartridge: Cartridge,
+    pub cartridge: Rc<RefCell<Cartridge>>,
     pub apu: Apu,
     pub ppu: Ppu,
 }
 
 impl Default for CpuBus {
     fn default() -> Self {
+        let cartridge = Rc::new(RefCell::new(Cartridge::default()));
         Self {
             ram: [0; 0x2000],
-            cartridge: Default::default(),
+            cartridge: cartridge.clone(),
             apu: Default::default(),
-            ppu: Default::default(),
+            ppu: Ppu::new(cartridge),
         }
     }
 }
 
 impl CpuBus {
-    pub fn new(cartridge: Cartridge, apu: Apu, ppu: Ppu) -> Self {
-        Self {
-            ram: [0; 0x2000],
-            cartridge,
-            apu,
-            ppu,
-        }
-    }
-
     pub fn tick(&mut self, cpu_cycles: usize) {
         self.ppu.tick(cpu_cycles * 3);
     }
@@ -54,7 +49,7 @@ impl CpuBus {
             0x0000..=0x1FFF => self.ram[addr as usize & 0b0000_0111_1111_1111],
             0x2000..=0x3FFF => self.ppu.cpu_bus_read(addr),
             0x4000..=0x4017 => self.apu.cpu_bus_read(addr),
-            0x8000..=0xFFFF => self.cartridge.cpu_bus_read(addr),
+            0x8000..=0xFFFF => self.cartridge.borrow_mut().cpu_bus_read(addr),
             _ => panic!("Warning. Illegal read from: ${:04X}", addr),
         }
     }
@@ -81,7 +76,7 @@ impl CpuBus {
             0x0000..=0x1FFF => self.ram[addr as usize & 0b0000_0111_1111_1111] = value,
             0x2000..=0x3FFF => self.ppu.cpu_bus_write(addr, value),
             0x4000..=0x4017 => self.apu.cpu_bus_write(addr, value),
-            0x6000..=0xFFFF => self.cartridge.cpu_bus_write(addr, value),
+            0x6000..=0xFFFF => self.cartridge.borrow_mut().cpu_bus_write(addr, value),
             _ => panic!("Warning. Illegal write to: ${:04X}", addr),
         }
     }
@@ -92,7 +87,7 @@ impl CpuBus {
             0x0000..=0x1FFF => self.ram[addr as usize & 0b0000_0111_1111_1111],
             0x2000..=0x3FFF => self.ppu.cpu_bus_peek(addr),
             0x4000..=0x4017 => self.apu.cpu_bus_peek(addr),
-            0x6000..=0xFFFF => self.cartridge.cpu_bus_peek(addr),
+            0x6000..=0xFFFF => self.cartridge.borrow().cpu_bus_peek(addr),
             _ => panic!("Warning. Illegal peek from: ${:04X}", addr),
         }
     }

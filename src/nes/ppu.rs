@@ -1,4 +1,9 @@
+use anyhow::Result;
 use bitflags::bitflags;
+use image::GenericImage;
+use image::ImageBuffer;
+use image::Rgb;
+use image::RgbImage;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -78,7 +83,10 @@ impl Ppu {
 
     pub fn read_ppu_memory(&self, addr: u16) -> u8 {
         match addr {
-            0..=0x1FFF => self.cartridge.borrow().chr[addr as usize],
+            0..=0x1FFF => {
+                let c = self.cartridge.borrow();
+                c.chr[addr as usize]
+            }
             0x2000..=0x3FFF => self.vram[addr as usize % self.vram.len()],
             _ => panic!("Invalid PPU address read {addr:04X}"),
         }
@@ -142,6 +150,45 @@ impl Ppu {
         } else {
             false
         }
+    }
+
+    pub fn render_tile_bank(&self, bank: usize) -> Result<RgbImage> {
+        let mut rendered: RgbImage = ImageBuffer::new(16 * 8, 16 * 8);
+        for y in 0..16 {
+            for x in 0..16 {
+                let tile_num = (y * 16) + x;
+                let tile = self.render_tile(bank, tile_num)?;
+                rendered.copy_from(&tile, (x * 8) as u32, (y * 8) as u32)?;
+            }
+        }
+        Ok(rendered)
+    }
+
+    pub fn render_tile(&self, bank: usize, tile_num: usize) -> Result<RgbImage> {
+        let mut rendered = ImageBuffer::new(8, 8);
+        let bank_addr = (0x1000 * bank) as u16;
+        let tile_addr = bank_addr + (tile_num * 16) as u16;
+        let tile: Vec<u8> = (tile_addr..=(tile_addr + 15))
+            .map(|addr| self.read_ppu_memory(addr))
+            .collect();
+        for y in 0..8 {
+            let mut lower = tile[y];
+            let mut upper = tile[y + 8];
+            for x in 0..8_usize {
+                let value = (1 & upper) << 1 | (1 & lower);
+                upper >>= 1;
+                lower >>= 1;
+                let rgb = match value {
+                    0b00 => Rgb([0, 0, 0]),
+                    0b01 => Rgb([255, 0, 0]),
+                    0b10 => Rgb([0, 255, 0]),
+                    0b11 => Rgb([0, 0, 255]),
+                    _ => unreachable!(),
+                };
+                rendered.put_pixel(x as u32, y as u32, rgb);
+            }
+        }
+        Ok(rendered)
     }
 }
 
