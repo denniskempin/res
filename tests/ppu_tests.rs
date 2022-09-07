@@ -7,10 +7,14 @@ use std::path::PathBuf;
 
 #[test]
 pub fn test_render_tile_bank() {
-    let system = System::with_ines(Path::new("tests/ppu/alter_ego.nes")).unwrap();
-    let ppu = &system.cpu.bus.ppu;
-    compare_to_golden(ppu.render_tile_bank(0).unwrap(), "alter_ego_bank0");
-    compare_to_golden(ppu.render_tile_bank(1).unwrap(), "alter_ego_bank1");
+    let mut system = System::with_ines(Path::new("tests/ppu/alter_ego.nes")).unwrap();
+    let ppu = &mut system.cpu.bus.ppu;
+    // Write example palette 0.
+    ppu.write_ppu_memory(0x3F00, 0x0F);
+    ppu.write_ppu_memory(0x3F01, 0x01);
+    ppu.write_ppu_memory(0x3F02, 0x11);
+    ppu.write_ppu_memory(0x3F03, 0x21);
+    compare_to_golden(ppu.render_chr(0).unwrap(), "alter_ego_tiles");
 }
 
 pub fn compare_to_golden(image: RgbImage, name: &str) {
