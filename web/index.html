@@ -92,6 +92,7 @@
                 transform: rotate(360deg);
             }
         }
+
     </style>
 </head>
 
@@ -106,7 +107,7 @@
     </div>
     <script type="module">
         // WASM Bindings for src/lib.rs
-        import init, { start_app } from './chip8emu.js';
+        import init, { start_app } from './res.js';
 
         async function run() {
             await init();
@@ -115,7 +116,7 @@
         }
 
         run();
-        </script>
+    </script>
 </body>
 
 </html>

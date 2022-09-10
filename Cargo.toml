@@ -1,13 +1,13 @@
 [package]
-name = "ners"
-default-run = "ners_bin"
+name = "res"
+default-run = "res_bin"
 version = "0.1.0"
 authors = ["Dennis Kempin <dennis.kempin@gmail.com>"]
 edition = "2021"
 rust-version = "1.62"
 
 [[bin]]
-name = "ners_bin"
+name = "res_bin"
 path = "src/main.rs"
 
 [lib]

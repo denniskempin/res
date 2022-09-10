@@ -1,5 +1,5 @@
-use ners::nes::trace::Trace;
-use ners::nes::System;
+use res::nes::trace::Trace;
+use res::nes::System;
 use std::fs::File;
 use std::io::BufRead;
 use std::io::{self};

@@ -7,16 +7,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in library 'ners'",
+            "name": "Debug unit tests in library 'res'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
                     "--lib",
-                    "--package=ners"
+                    "--package=res"
                 ],
                 "filter": {
-                    "name": "ners",
+                    "name": "res",
                     "kind": "lib"
                 }
             },
@@ -26,15 +26,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'ners_bin'",
+            "name": "Debug executable 'res_bin'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=ners_bin",
-                    "--package=ners"
+                    "--bin=res_bin",
+                    "--package=res"
                 ],
                 "filter": {
-                    "name": "ners_bin",
+                    "name": "res_bin",
                     "kind": "bin"
                 }
             },
@@ -44,16 +44,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'ners_bin'",
+            "name": "Debug unit tests in executable 'res_bin'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=ners_bin",
-                    "--package=ners"
+                    "--bin=res_bin",
+                    "--package=res"
                 ],
                 "filter": {
-                    "name": "ners_bin",
+                    "name": "res_bin",
                     "kind": "bin"
                 }
             },
@@ -69,7 +69,7 @@
                     "test",
                     "--no-run",
                     "--test=cpu_tests",
-                    "--package=ners"
+                    "--package=res"
                 ],
                 "filter": {
                     "name": "cpu_tests",
@@ -88,7 +88,7 @@
                     "test",
                     "--no-run",
                     "--bench=cpu_bench",
-                    "--package=ners"
+                    "--package=res"
                 ],
                 "filter": {
                     "name": "cpu_bench",

@@ -70,7 +70,15 @@ impl System {
 
     pub fn with_ines(path: &Path) -> Result<System> {
         let mut system = System::default();
-        system.load_ines(path)?;
+        let ines_file = fs::read(path)?;
+        system.load_ines(&ines_file)?;
+        system.cpu.boot();
+        Ok(system)
+    }
+
+    pub fn with_ines_bytes(bytes: &[u8]) -> Result<System> {
+        let mut system = System::default();
+        system.load_ines(bytes)?;
         system.cpu.boot();
         Ok(system)
     }
@@ -102,9 +110,8 @@ impl System {
         self.reset()
     }
 
-    pub fn load_ines(&mut self, path: &Path) -> Result<()> {
-        let ines_file = fs::read(path)?;
-        self.cpu.bus.cartridge.borrow_mut().load_ines(&ines_file)?;
+    pub fn load_ines(&mut self, bytes: &[u8]) -> Result<()> {
+        self.cpu.bus.cartridge.borrow_mut().load_ines(bytes)?;
         self.reset()
     }
 

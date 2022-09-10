@@ -1,7 +1,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 
 use egui::vec2;
-use ners::app::EmulatorApp;
+use res::app::EmulatorApp;
 
 fn main() {
     // Log to stdout (if you run with `RUST_LOG=debug`).

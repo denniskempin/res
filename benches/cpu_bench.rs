@@ -4,7 +4,7 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::BatchSize;
 use criterion::Criterion;
-use ners::nes::System;
+use res::nes::System;
 
 fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("nestest", |b| {
