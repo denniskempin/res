@@ -28,13 +28,6 @@ pub fn test_basic_program() {
 }
 
 #[test]
-#[ignore] // Takes a while to run
-pub fn test_01_basic() {
-    let system = System::with_ines(Path::new("tests/cpu/01-basics.nes")).unwrap();
-    compare_to_log(system, "tests/cpu/01-basics.log", 124260);
-}
-
-#[test]
 pub fn test_nestest() {
     let mut system = System::with_ines(Path::new("tests/cpu/nestest.nes")).unwrap();
     system.cpu.program_counter = 0xC000;
