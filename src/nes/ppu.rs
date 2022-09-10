@@ -1,13 +1,13 @@
 use anyhow::Result;
 use bitflags::bitflags;
 use image::GenericImage;
-use image::GenericImageView;
+
 use image::ImageBuffer;
 use image::Rgb;
 use image::RgbImage;
 use image::SubImage;
 use std::cell::RefCell;
-use std::ops::DerefMut;
+
 use std::rc::Rc;
 
 use super::cartridge::Cartridge;
@@ -31,6 +31,7 @@ pub struct Ppu {
     pub address_register: AddressRegister,
 
     pub nmi_interrupt: bool,
+    pub vblank: bool,
 }
 
 impl Default for Ppu {
@@ -55,6 +56,7 @@ impl Ppu {
             address_register: AddressRegister::default(),
 
             nmi_interrupt: false,
+            vblank: false,
         }
     }
 
@@ -66,6 +68,7 @@ impl Ppu {
 
             if self.scanline == 241 {
                 self.status_register.insert(StatusRegister::VBLANK_STARTED);
+                self.vblank = true;
                 if self
                     .control_register
                     .contains(ControlRegister::GENERATE_NMI)
@@ -76,6 +79,7 @@ impl Ppu {
 
             if self.scanline == 261 {
                 self.status_register.remove(StatusRegister::VBLANK_STARTED);
+                self.vblank = false;
             }
 
             if self.scanline >= 262 {
@@ -105,7 +109,7 @@ impl Ppu {
         match addr {
             0..=0x1FFF => self.cartridge.borrow_mut().chr[addr as usize] = value,
             0x2000..=0x3FFF => self.vram[(addr - 0x2000) as usize % self.vram.len()] = value,
-            _ => panic!("Invalid PPU address read {addr:04X}"),
+            _ => println!("Warning: Invalid PPU address write {addr:04X}"),
         };
     }
 
@@ -123,6 +127,20 @@ impl Ppu {
         let buffer = self.internal_data_buffer;
         self.internal_data_buffer = self.read_ppu_memory(addr);
         buffer
+    }
+
+    pub fn write_data_register(&mut self, value: u8) {
+        let addr = self.address_register.address();
+        let inc = if self
+            .control_register
+            .contains(ControlRegister::VRAM_ADD_INCREMENT)
+        {
+            32
+        } else {
+            1
+        };
+        self.address_register.increment(inc);
+        self.write_ppu_memory(addr, value);
     }
 
     pub fn read_status_register(&mut self) -> u8 {
@@ -156,6 +174,7 @@ impl Ppu {
                 self.control_register = ControlRegister::from_bits_truncate(value)
             }
             ADDRESS_REGISTER_ADDR => self.address_register.write(value),
+            DATA_REGISTER_ADDR => self.write_data_register(value),
             _ => println!("Warning: Invalid write to PPU at {addr:04X}"),
         }
     }
@@ -169,7 +188,36 @@ impl Ppu {
         }
     }
 
-    pub fn render_chr(&self, palette_id: usize) -> Result<RgbImage> {
+    pub fn get_tile_attribute(&self, x: u32, y: u32) -> u8 {
+        let attr_table_idx = y / 4 * 8 + x / 4;
+        let attr_byte = self.read_ppu_memory(0x23C0 + attr_table_idx as u16);
+        println!("{x} {y}: {attr_byte} ({attr_table_idx:03X})");
+
+        match (x % 4 / 2, y % 4 / 2) {
+            (0, 0) => attr_byte & 0b11,
+            (1, 0) => (attr_byte >> 2) & 0b11,
+            (0, 1) => (attr_byte >> 4) & 0b11,
+            (1, 1) => (attr_byte >> 6) & 0b11,
+            (_, _) => panic!("should not happen"),
+        }
+    }
+
+    pub fn render_nametable(&mut self, target: &mut SubImage<&mut RgbImage>) {
+        for y in 0..30_u32 {
+            for x in 0..32 {
+                let addr = 0x2000 + y * 0x0020 + x;
+                let tile_num: usize = self.read_ppu_memory(addr as u16).into();
+                self.render_tile(
+                    0,
+                    tile_num,
+                    self.get_tile_attribute(x, y).into(),
+                    &mut target.sub_image(x * 8, y * 8, 8, 8),
+                )
+            }
+        }
+    }
+
+    pub fn render_pattern_table(&self, palette_id: usize) -> Result<RgbImage> {
         let mut rendered: RgbImage = ImageBuffer::new(32 * 8, 16 * 8);
         self.render_tile_bank(0, palette_id, &mut rendered.sub_image(0, 0, 16 * 8, 16 * 8));
         self.render_tile_bank(

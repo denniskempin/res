@@ -80,6 +80,23 @@ impl System {
         Ok(())
     }
 
+    pub fn execute_one_frame(&mut self) -> Result<()> {
+        // Finish current frame until we enter vblank
+        while !self.cpu.bus.ppu.vblank {
+            self.cpu.execute_one()?;
+        }
+        // Execute current vblank perior until we reach the next frame.
+        while self.cpu.bus.ppu.vblank {
+            self.cpu.execute_one()?;
+        }
+        Ok(())
+    }
+    pub fn execute_frames(&mut self, num_frames: usize) -> Result<()> {
+        for _ in 0..num_frames {
+            self.execute_one_frame()?;
+        }
+        Ok(())
+    }
     pub fn load_program(&mut self, program: &[u8]) -> Result<()> {
         self.cpu.bus.cartridge.borrow_mut().load_program(program);
         self.reset()
