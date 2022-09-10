@@ -202,7 +202,7 @@ impl Ppu {
                 let addr = 0x2000 + y * 0x20 + x;
                 let tile_num: usize = self.read_ppu_memory(addr as u16).into();
                 self.render_tile(
-                    1,
+                    0,
                     tile_num,
                     self.get_tile_attribute(x, y).into(),
                     &mut target.sub_image(x * 8, y * 8, 8, 8),
