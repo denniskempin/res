@@ -133,6 +133,7 @@ impl Ppu {
         self.internal_data_buffer = self.read_ppu_memory(addr);
         buffer
     }
+
     pub fn write_data_register(&mut self, value: u8) {
         let addr = self.increment_address_register();
         self.write_ppu_memory(addr, value);
@@ -198,7 +199,7 @@ impl Ppu {
     pub fn render_nametable(&mut self, target: &mut SubImage<&mut RgbaImage>) {
         for y in 0..30_u32 {
             for x in 0..32 {
-                let addr = 0x2000 + y * 0x0020 + x;
+                let addr = 0x2000 + y * 0x20 + x;
                 let tile_num: usize = self.read_ppu_memory(addr as u16).into();
                 self.render_tile(
                     1,

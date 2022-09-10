@@ -9,6 +9,8 @@ use egui::Context;
 use egui::DroppedFile;
 use egui::Image;
 
+use egui::InputState;
+use egui::Key;
 use egui::Sense;
 use egui::TextureHandle;
 use image::GenericImage;
@@ -16,6 +18,7 @@ use image::ImageBuffer;
 
 use image::RgbaImage;
 
+use crate::nes::joypad::JoypadButton;
 use crate::nes::System;
 
 pub struct EmulatorApp {
@@ -69,6 +72,18 @@ impl EmulatorApp {
             ColorImage::from_rgba_unmultiplied(size, image.as_flat_samples().as_slice());
         self.texture.set(egui_image);
     }
+
+    fn update_keys(&mut self, input: &InputState) {
+        let joypad0 = &mut self.emulator.cpu.bus.joypad0;
+        joypad0.set_button(JoypadButton::Right, input.key_down(Key::ArrowRight));
+        joypad0.set_button(JoypadButton::Left, input.key_down(Key::ArrowLeft));
+        joypad0.set_button(JoypadButton::Down, input.key_down(Key::ArrowDown));
+        joypad0.set_button(JoypadButton::Up, input.key_down(Key::ArrowUp));
+        joypad0.set_button(JoypadButton::Start, input.key_down(Key::S));
+        joypad0.set_button(JoypadButton::Select, input.key_down(Key::A));
+        joypad0.set_button(JoypadButton::ButtonB, input.key_down(Key::Z));
+        joypad0.set_button(JoypadButton::ButtonA, input.key_down(Key::X));
+    }
 }
 
 impl eframe::App for EmulatorApp {
@@ -77,6 +92,7 @@ impl eframe::App for EmulatorApp {
         if !ctx.input().raw.dropped_files.is_empty() {
             self.load_dropped_file(&ctx.input().raw.dropped_files[0]);
         }
+        self.update_keys(&ctx.input());
         if self.loaded {
             self.emulator.execute_one_frame().unwrap();
             self.update_display();

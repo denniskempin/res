@@ -29,6 +29,8 @@ pub fn test_basic_program() {
 
 #[test]
 pub fn test_nestest() {
+    // Run nestest.nes and compare results against a log file collected by
+    // running the same file in the accurate Nintendulator.
     let mut system = System::with_ines(Path::new("tests/cpu/nestest.nes")).unwrap();
     system.cpu.program_counter = 0xC000;
     compare_to_log(system, "tests/cpu/nestest.log", 0);

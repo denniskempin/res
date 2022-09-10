@@ -3,6 +3,7 @@ pub mod cartridge;
 pub mod cpu;
 pub mod ppu;
 pub mod trace;
+pub mod joypad;
 
 use self::cpu::Cpu;
 use self::cpu::Operation;

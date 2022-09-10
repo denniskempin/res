@@ -44,6 +44,7 @@ pub fn test_alter_ego_pattern_table() {
         "test_alter_ego_pattern_table",
     );
 }
+
 #[test]
 #[ignore] // Requires donkey_kong.nes rom
 pub fn test_donkey_kong_intro() {
@@ -63,6 +64,7 @@ pub fn test_donkey_kong_pattern_table() {
         "test_donkey_kong_pattern_table",
     );
 }
+
 pub fn compare_to_golden(image: RgbaImage, name: &str) {
     let path_prefix = PathBuf::from("tests/ppu").join(name);
     let golden_path = path_prefix.with_extension("png");
