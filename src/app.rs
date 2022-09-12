@@ -67,6 +67,11 @@ impl EmulatorApp {
             .bus
             .ppu
             .render_nametable(&mut image.sub_image(0, 0, 32 * 8, 30 * 8));
+        self.emulator
+            .cpu
+            .bus
+            .ppu
+            .render_sprites(&mut image.sub_image(0, 0, 32 * 8, 30 * 8));
         let size = [image.width() as usize, image.height() as usize];
         let egui_image =
             ColorImage::from_rgba_unmultiplied(size, image.as_flat_samples().as_slice());

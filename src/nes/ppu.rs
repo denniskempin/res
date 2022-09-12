@@ -14,6 +14,9 @@ use super::cartridge::Cartridge;
 
 const CONTROL_REGISTER_ADDR: u16 = 0x2000;
 const STATUS_REGISTER_ADDR: u16 = 0x2002;
+const OAM_ADDR: u16 = 0x2003;
+const OAM_DATA: u16 = 0x2004;
+const PPU_SCROLL: u16 = 0x2005;
 const ADDRESS_REGISTER_ADDR: u16 = 0x2006;
 const DATA_REGISTER_ADDR: u16 = 0x2007;
 
@@ -25,6 +28,8 @@ pub struct Ppu {
     pub internal_data_buffer: u8,
     pub cycle: usize,
     pub scanline: usize,
+    pub oam_addr: u8,
+    pub scroll: u8,
 
     pub control_register: ControlRegister,
     pub status_register: StatusRegister,
@@ -50,6 +55,8 @@ impl Ppu {
             internal_data_buffer: 0,
             cycle: 0,
             scanline: 0,
+            oam_addr: 0,
+            scroll: 0,
 
             control_register: ControlRegister::default(),
             status_register: StatusRegister::default(),
@@ -92,6 +99,7 @@ impl Ppu {
         if entry == 0 {
             SYSTEM_PALLETE[self.read_ppu_memory(0x3F00 + (palette_id as u16 * 4)) as usize]
         } else {
+            
             let addr = 0x3F00 + (palette_id as u16 * 4) + entry as u16;
             SYSTEM_PALLETE[self.read_ppu_memory(addr) as usize]
         }
@@ -111,6 +119,14 @@ impl Ppu {
             0x2000..=0x3FFF => self.vram[(addr - 0x2000) as usize % self.vram.len()] = value,
             _ => println!("Warning: Invalid PPU address write {addr:04X}"),
         };
+    }
+
+    pub fn read_oam(&mut self, addr: u8) -> u8 {
+        self.oam_data[addr as usize]
+    }
+
+    pub fn write_oam(&mut self, addr: u8, value: u8) {
+        self.oam_data[addr as usize] = value;
     }
 
     fn increment_address_register(&mut self) -> u16 {
@@ -147,6 +163,9 @@ impl Ppu {
 
     pub fn cpu_bus_peek(&self, addr: u16) -> u8 {
         match addr {
+            OAM_ADDR => self.oam_addr,
+            OAM_DATA => self.oam_data[self.oam_addr as usize],
+            PPU_SCROLL => self.scroll,
             CONTROL_REGISTER_ADDR => self.control_register.bits,
             STATUS_REGISTER_ADDR => self.status_register.bits,
             _ => {
@@ -158,6 +177,11 @@ impl Ppu {
 
     pub fn cpu_bus_read(&mut self, addr: u16) -> u8 {
         match addr {
+            OAM_DATA => {
+                let value = self.oam_data[self.oam_addr as usize];
+                self.oam_addr = self.oam_addr.wrapping_add(1);
+                value
+            }
             DATA_REGISTER_ADDR => self.read_data_register(),
             STATUS_REGISTER_ADDR => self.read_status_register(),
             _ => self.cpu_bus_peek(addr),
@@ -166,6 +190,10 @@ impl Ppu {
 
     pub fn cpu_bus_write(&mut self, addr: u16, value: u8) {
         match addr {
+            0x2001 => (),
+            OAM_ADDR => self.oam_addr = value,
+            OAM_DATA => self.oam_data[self.oam_addr as usize] = value,
+            PPU_SCROLL => self.scroll = value,
             CONTROL_REGISTER_ADDR => {
                 self.control_register = ControlRegister::from_bits_truncate(value)
             }
@@ -184,6 +212,29 @@ impl Ppu {
         }
     }
 
+    pub fn render_sprites(&self, target: &mut SubImage<&mut RgbaImage>) {
+        for sprite_num in 0..64 {
+            let oam_addr = sprite_num * 4;
+            let y = self.oam_data[oam_addr + 0];
+            if y > 0xEF {
+                continue;
+            }
+            let idx = self.oam_data[oam_addr + 1];
+            let attr = self.oam_data[oam_addr + 2];
+            let x = self.oam_data[oam_addr + 3];
+            let palette_id = attr & 0b0000_0011;
+            if x < 31 * 8 && y < 29 * 8 {
+                self.render_tile(
+                    0,
+                    idx as usize,
+                    palette_id as usize + 4,
+                    &mut target.sub_image(x.into(), y.into(), 8, 8),
+                    true,
+                );
+            }
+        }
+    }
+
     pub fn get_tile_attribute(&self, x: u32, y: u32) -> u8 {
         let attr_table_idx = y / 4 * 8 + x / 4;
         let attr_byte = self.read_ppu_memory(0x23C0 + attr_table_idx as u16);
@@ -197,15 +248,25 @@ impl Ppu {
     }
 
     pub fn render_nametable(&mut self, target: &mut SubImage<&mut RgbaImage>) {
+        let bank = if self
+            .control_register
+            .contains(ControlRegister::BACKROUND_PATTERN_ADDR)
+        {
+            1
+        } else {
+            0
+        };
+
         for y in 0..30_u32 {
             for x in 0..32 {
                 let addr = 0x2000 + y * 0x20 + x;
                 let tile_num: usize = self.read_ppu_memory(addr as u16).into();
                 self.render_tile(
-                    0,
+                    bank,
                     tile_num,
                     self.get_tile_attribute(x, y).into(),
                     &mut target.sub_image(x * 8, y * 8, 8, 8),
+                    false,
                 )
             }
         }
@@ -236,6 +297,7 @@ impl Ppu {
                     tile_num,
                     palette_id,
                     &mut target.sub_image((x * 8) as u32, (y * 8) as u32, 8, 8),
+                    false,
                 );
             }
         }
@@ -247,6 +309,7 @@ impl Ppu {
         tile_num: usize,
         palette_id: usize,
         target: &mut SubImage<&mut RgbaImage>,
+        is_sprite: bool,
     ) {
         let bank_addr = (0x1000 * bank) as u16;
         let tile_addr = bank_addr + (tile_num * 16) as u16;
@@ -258,8 +321,10 @@ impl Ppu {
             let mut upper = tile[y + 8];
             for x in (0..8_usize).rev() {
                 let value = (1 & upper) << 1 | (1 & lower);
-                let rgb = self.get_palette_entry(palette_id, value as usize);
-                target.put_pixel(x as u32, y as u32, rgb);
+                if !(value == 0 && is_sprite) {
+                    let rgb = self.get_palette_entry(palette_id, value as usize);
+                    target.put_pixel(x as u32, y as u32, rgb);
+                }
                 upper >>= 1;
                 lower >>= 1;
             }

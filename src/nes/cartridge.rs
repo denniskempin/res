@@ -57,6 +57,9 @@ impl Cartridge {
     pub fn cpu_bus_write(&mut self, addr: u16, value: u8) {
         match addr {
             0x6000..=0x7FFF => self.prg_ram[addr as usize - 0x6000] = value,
+            0x8000..=0xFFFF => {
+                println!("Warning: Illegal write to prg rom: 0x{:04X}", addr);
+            }
             _ => panic!("Warning. Illegal write to: ${:04X}", addr),
         };
     }

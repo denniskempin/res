@@ -57,7 +57,10 @@ impl CpuBus {
             0x4016 => self.joypad0.cpu_bus_read(),
             0x4017 => self.joypad1.cpu_bus_read(),
             0x8000..=0xFFFF => self.cartridge.borrow_mut().cpu_bus_read(addr),
-            _ => panic!("Warning. Illegal read from: ${:04X}", addr),
+            _ => {
+                println!("Warning. Illegal read from: ${:04X}", addr);
+                0
+            }
         }
     }
 
@@ -82,7 +85,9 @@ impl CpuBus {
         match addr {
             0x0000..=0x1FFF => self.ram[addr as usize & 0b0000_0111_1111_1111] = value,
             0x2000..=0x3FFF => self.ppu.cpu_bus_write(addr, value),
-            0x4000..=0x4015 => self.apu.cpu_bus_write(addr, value),
+            0x4000..=0x4013 => self.apu.cpu_bus_write(addr, value),
+            0x4014 => self.oam_dma(value),
+            0x4015 => self.apu.cpu_bus_write(0x4015, value),
             0x4016 => self.joypad0.cpu_bus_write(value),
             0x4017 => self.joypad1.cpu_bus_write(value),
             0x6000..=0xFFFF => self.cartridge.borrow_mut().cpu_bus_write(addr, value),
@@ -95,7 +100,9 @@ impl CpuBus {
         match addr {
             0x0000..=0x1FFF => self.ram[addr as usize & 0b0000_0111_1111_1111],
             0x2000..=0x3FFF => self.ppu.cpu_bus_peek(addr),
-            0x4000..=0x4015 => self.apu.cpu_bus_peek(addr),
+            0x4000..=0x4013 => self.apu.cpu_bus_peek(addr),
+            0x4014 => 0,
+            0x4015 => self.apu.cpu_bus_peek(0x4015),
             0x4016 => self.joypad0.cpu_bus_peek(),
             0x4017 => self.joypad1.cpu_bus_peek(),
             0x6000..=0xFFFF => self.cartridge.borrow().cpu_bus_peek(addr),
@@ -122,6 +129,18 @@ impl CpuBus {
             self.zero_page_peek(addr),
             self.zero_page_peek(addr.wrapping_add(1)),
         ])
+    }
+
+    pub fn oam_dma(&mut self, memory_page: u8) {
+        let start_addr = (memory_page as u16) << 8;
+        for i in 0x00..=0xFF_u8 {
+            let value = self.read(start_addr + i as u16);
+            self.ppu.write_oam(i, value);
+        }
+        // Hack.. we should be advancing the CPU clock, but don't have access
+        // to it here. Instead just advance everything else on the bus.
+        // Ideally, the bus could tell the CPU how long a read/write took.
+        self.tick(512);
     }
 }
 

@@ -1,9 +1,9 @@
 pub mod apu;
 pub mod cartridge;
 pub mod cpu;
+pub mod joypad;
 pub mod ppu;
 pub mod trace;
-pub mod joypad;
 
 use self::cpu::Cpu;
 use self::cpu::Operation;
@@ -85,7 +85,9 @@ impl System {
     }
 
     pub fn execute_until_halt(&mut self) -> Result<()> {
-        while self.cpu.execute_one()? {}
+        while self.cpu.execute_one()? {
+            println!("{:?}", self.trace());
+        }
         Ok(())
     }
 
