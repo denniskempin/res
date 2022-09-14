@@ -99,7 +99,6 @@ impl Ppu {
         if entry == 0 {
             SYSTEM_PALLETE[self.read_ppu_memory(0x3F00 + (palette_id as u16 * 4)) as usize]
         } else {
-            
             let addr = 0x3F00 + (palette_id as u16 * 4) + entry as u16;
             SYSTEM_PALLETE[self.read_ppu_memory(addr) as usize]
         }
@@ -215,7 +214,7 @@ impl Ppu {
     pub fn render_sprites(&self, target: &mut SubImage<&mut RgbaImage>) {
         for sprite_num in 0..64 {
             let oam_addr = sprite_num * 4;
-            let y = self.oam_data[oam_addr + 0];
+            let y = self.oam_data[oam_addr];
             if y > 0xEF {
                 continue;
             }

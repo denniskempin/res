@@ -47,7 +47,7 @@ pub fn test_nestest() {
 
 pub fn compare_to_log(mut system: System, log_file: &str, goal_count: usize) {
     let log = io::BufReader::new(File::open(log_file).unwrap());
-
+    let mut previous_actual = Trace::default();
     for (i, line) in log.lines().enumerate() {
         if goal_count > 0 && i >= goal_count {
             println!("Reached goal of {goal_count} instructions. Success.");
@@ -58,7 +58,20 @@ pub fn compare_to_log(mut system: System, log_file: &str, goal_count: usize) {
         println!("{i:6} Exp: {expected_trace}");
         let actual_trace = system.trace().unwrap();
         println!("{i:6} Act: {actual_trace}");
+
+        // Cycle count mismatches happen often and are hard to read. Print
+        // a nice error message to help.
+        if expected_trace.cpu_cycle != actual_trace.cpu_cycle {
+            let actual_delta = actual_trace.cpu_cycle - previous_actual.cpu_cycle;
+            let expected_delta = expected_trace.cpu_cycle - previous_actual.cpu_cycle;
+            let instr = previous_actual.opcode_str;
+            println!(
+                "Cpu instruction {instr} lasted {actual_delta} cycles but should be {expected_delta} cycles"
+            );
+        }
+
         assert_eq!(expected_trace, actual_trace);
         system.cpu.execute_one().unwrap();
+        previous_actual = actual_trace;
     }
 }

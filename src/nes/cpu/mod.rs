@@ -252,13 +252,13 @@ impl Cpu {
     }
 
     fn stack_push(&mut self, value: u8) {
-        self.bus.write(Self::STACK_ADDR + self.sp as u16, value);
+        self.write(Self::STACK_ADDR + self.sp as u16, value);
         self.sp -= 1;
     }
 
     fn stack_pop(&mut self) -> u8 {
         self.sp += 1;
-        self.bus.read(Self::STACK_ADDR + self.sp as u16)
+        self.read(Self::STACK_ADDR + self.sp as u16)
     }
 
     pub fn peek_stack(&mut self) -> impl Iterator<Item = u8> + '_ {
@@ -267,52 +267,80 @@ impl Cpu {
             .peek_slice(Self::STACK_ADDR + self.sp as u16 + 1, stack_entries)
     }
 
-    /// Returns a struct that implements ReadOrPeek and performs
-    /// mutable reads.
-    fn mutable_bus_reader(&mut self) -> MutableBusReader {
-        BusReader { cpu: self }
+    pub fn read(&mut self, addr: u16) -> u8 {
+        self.advance_clock(1);
+        self.bus.read(addr)
     }
 
-    /// Returns a struct that implements ReadOrPeek and performs
+    pub fn write(&mut self, addr: u16, value: u8) {
+        self.advance_clock(1);
+        self.bus.write(addr, value)
+    }
+
+    pub fn read_u16(&mut self, addr: u16) -> u16 {
+        u16::from_le_bytes([self.read(addr), self.read(addr + 1)])
+    }
+
+    /// Returns a struct that implements MaybeMutableCpu and performs
+    /// mutable reads.
+    fn mutable_wrapper(&mut self) -> MutableCpuWrapper {
+        MutableCpuWrapper { cpu: self }
+    }
+
+    /// Returns a struct that implements MaybeMutableCpu and performs
     /// immutable peeks.
-    fn immutable_bus_reader(&self) -> ImmutableBusReader {
-        ImmutableBusReader { cpu: self }
+    fn immutable_wrapper(&self) -> ImmutableCpuWrapper {
+        ImmutableCpuWrapper { cpu: self }
     }
 }
 
 /// Wrapper for abstraction over mutability. See ReadOrPeek.
-struct BusReader<T> {
+struct MaybeMutableCpuWrapper<T> {
     cpu: T,
 }
-type MutableBusReader<'a> = BusReader<&'a mut Cpu>;
-type ImmutableBusReader<'a> = BusReader<&'a Cpu>;
+type MutableCpuWrapper<'a> = MaybeMutableCpuWrapper<&'a mut Cpu>;
+type ImmutableCpuWrapper<'a> = MaybeMutableCpuWrapper<&'a Cpu>;
 
-/// Allows abstraction over mutability to read if mutable and
-/// peek if immutable.
-trait ReadOrPeek {
-    fn cpu(&self) -> &Cpu;
+/// Allows abstraction over mutability for accessing the Cpu.
+///
+/// This trait is implemented in MutableCpuWrapper to do mutating reads and
+/// account for clock advances during reads.
+/// It also implemented as ImmutableCpuWrapper, which won't touch the clock
+/// and do immutable peek's instead.
+///
+/// This is used to re-use logic from execution flow in debug output as well
+/// (e.g. to display calculated addresses without modifying the CPU state).
+trait MaybeMutableCpu {
+    fn immutable(&self) -> &Cpu;
+    fn advance_clock(&mut self, cycles: usize);
     fn read_or_peek(&mut self, addr: u16) -> u8;
     fn read_or_peek_u16(&mut self, addr: u16) -> u16;
 }
 
-impl<'a> ReadOrPeek for MutableBusReader<'a> {
-    fn cpu(&self) -> &Cpu {
+impl<'a> MaybeMutableCpu for MutableCpuWrapper<'a> {
+    fn immutable(&self) -> &Cpu {
         self.cpu
+    }
+
+    fn advance_clock(&mut self, cycles: usize) {
+        self.cpu.advance_clock(cycles);
     }
 
     fn read_or_peek(&mut self, addr: u16) -> u8 {
-        self.cpu.bus.read(addr)
+        self.cpu.read(addr)
     }
 
     fn read_or_peek_u16(&mut self, addr: u16) -> u16 {
-        self.cpu.bus.read_u16(addr)
+        self.cpu.read_u16(addr)
     }
 }
 
-impl<'a> ReadOrPeek for ImmutableBusReader<'a> {
-    fn cpu(&self) -> &Cpu {
+impl<'a> MaybeMutableCpu for ImmutableCpuWrapper<'a> {
+    fn immutable(&self) -> &Cpu {
         self.cpu
     }
+
+    fn advance_clock(&mut self, _cycles: usize) {}
 
     fn read_or_peek(&mut self, addr: u16) -> u8 {
         self.cpu.bus.peek(addr)
