@@ -2,6 +2,7 @@ use anyhow::Result;
 use konst::eq_str;
 
 use super::Cpu;
+use super::ReadOrPeek;
 use super::StatusFlags;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -432,16 +433,18 @@ trait AddressMode {
     const OPERAND_SIZE: usize = 0;
     const BASE_CYCLE_COUNT: usize = 1;
 
-    fn load_addr(cpu: &Cpu, addr: u16) -> u16 {
-        Self::calculate_addr(cpu, addr)
+    fn load_addr<T: ReadOrPeek>(mut _reader: T, _addr: u16) -> u16 {
+        0
     }
 
     fn load_operand(cpu: &mut Cpu, addr: u16) -> u8 {
-        cpu.bus.read(Self::load_addr(cpu, addr))
+        let addr = Self::load_addr(cpu.mutable_bus_reader(), addr);
+        cpu.bus.read(addr)
     }
 
     fn store_operand(cpu: &mut Cpu, addr: u16, value: u8) {
-        cpu.bus.write(Self::load_addr(cpu, addr), value)
+        let addr = Self::load_addr(cpu.mutable_bus_reader(), addr);
+        cpu.bus.write(addr, value)
     }
 
     fn cycle_count(_cpu: &mut Cpu, _addr: u16, mode: MemoryAccessMode) -> usize {
@@ -459,11 +462,8 @@ trait AddressMode {
     }
 
     fn peek_operand(cpu: &Cpu, addr: u16) -> u8 {
-        cpu.bus.peek(Self::load_addr(cpu, addr))
-    }
-
-    fn calculate_addr(_cpu: &Cpu, _addr: u16) -> u16 {
-        unimplemented!()
+        cpu.bus
+            .peek(Self::load_addr(cpu.immutable_bus_reader(), addr))
     }
 
     fn format(cpu: &Cpu, addr: u16) -> String;
@@ -533,14 +533,14 @@ impl AddressMode for Absolute {
     const OPERAND_SIZE: usize = 2;
     const BASE_CYCLE_COUNT: usize = 3;
 
-    fn load_addr(cpu: &Cpu, addr: u16) -> u16 {
-        cpu.bus.peek_u16(addr + 1)
+    fn load_addr<T: ReadOrPeek>(mut reader: T, addr: u16) -> u16 {
+        reader.read_or_peek_u16(addr + 1)
     }
 
     fn format(cpu: &Cpu, addr: u16) -> String {
         return format!(
             " {:04X} @{:02X}",
-            Self::load_addr(cpu, addr),
+            Self::load_addr(cpu.immutable_bus_reader(), addr),
             Self::peek_operand(cpu, addr)
         );
     }
@@ -551,8 +551,10 @@ impl AddressMode for AbsoluteX {
     const OPERAND_SIZE: usize = 2;
     const BASE_CYCLE_COUNT: usize = 3;
 
-    fn load_addr(cpu: &Cpu, addr: u16) -> u16 {
-        cpu.bus.peek_u16(addr + 1).wrapping_add(cpu.x as u16)
+    fn load_addr<T: ReadOrPeek>(mut reader: T, addr: u16) -> u16 {
+        reader
+            .read_or_peek_u16(addr + 1)
+            .wrapping_add(reader.cpu().x as u16)
     }
 
     fn cycle_count(cpu: &mut Cpu, addr: u16, mode: MemoryAccessMode) -> usize {
@@ -577,7 +579,7 @@ impl AddressMode for AbsoluteX {
         return format!(
             " {:04X}+X ={:04X} @{:02X}",
             cpu.bus.peek_u16(addr + 1),
-            Self::load_addr(cpu, addr),
+            Self::load_addr(cpu.immutable_bus_reader(), addr),
             Self::peek_operand(cpu, addr)
         );
     }
@@ -588,8 +590,10 @@ impl AddressMode for AbsoluteY {
     const OPERAND_SIZE: usize = 2;
     const BASE_CYCLE_COUNT: usize = 3;
 
-    fn load_addr(cpu: &Cpu, addr: u16) -> u16 {
-        cpu.bus.peek_u16(addr + 1).wrapping_add(cpu.y as u16)
+    fn load_addr<T: ReadOrPeek>(mut reader: T, addr: u16) -> u16 {
+        reader
+            .read_or_peek_u16(addr + 1)
+            .wrapping_add(reader.cpu().y as u16)
     }
 
     fn cycle_count(cpu: &mut Cpu, addr: u16, mode: MemoryAccessMode) -> usize {
@@ -614,7 +618,7 @@ impl AddressMode for AbsoluteY {
         return format!(
             " {:04X}+Y ={:04X} @{:02X}",
             cpu.bus.peek_u16(addr + 1),
-            Self::load_addr(cpu, addr),
+            Self::load_addr(cpu.immutable_bus_reader(), addr),
             Self::peek_operand(cpu, addr)
         );
     }
@@ -625,14 +629,14 @@ impl AddressMode for ZeroPage {
     const OPERAND_SIZE: usize = 1;
     const BASE_CYCLE_COUNT: usize = 2;
 
-    fn load_addr(cpu: &Cpu, addr: u16) -> u16 {
-        cpu.bus.peek(addr + 1) as u16
+    fn load_addr<T: ReadOrPeek>(mut reader: T, addr: u16) -> u16 {
+        reader.read_or_peek(addr + 1) as u16
     }
 
     fn format(cpu: &Cpu, addr: u16) -> String {
         return format!(
             " {:02X} @ {:02X}",
-            Self::load_addr(cpu, addr),
+            Self::load_addr(cpu.immutable_bus_reader(), addr),
             Self::peek_operand(cpu, addr)
         );
     }
@@ -643,15 +647,15 @@ impl AddressMode for ZeroPageX {
     const OPERAND_SIZE: usize = 1;
     const BASE_CYCLE_COUNT: usize = 3;
 
-    fn load_addr(cpu: &Cpu, addr: u16) -> u16 {
-        cpu.bus.peek(addr + 1).wrapping_add(cpu.x) as u16
+    fn load_addr<T: ReadOrPeek>(mut reader: T, addr: u16) -> u16 {
+        reader.read_or_peek(addr + 1).wrapping_add(reader.cpu().x) as u16
     }
 
     fn format(cpu: &Cpu, addr: u16) -> String {
         return format!(
             " {:02X}+X ={:04X} @ {:02X}",
             cpu.bus.peek(addr + 1),
-            Self::load_addr(cpu, addr),
+            Self::load_addr(cpu.immutable_bus_reader(), addr),
             Self::peek_operand(cpu, addr)
         );
     }
@@ -662,15 +666,15 @@ impl AddressMode for ZeroPageY {
     const OPERAND_SIZE: usize = 1;
     const BASE_CYCLE_COUNT: usize = 3;
 
-    fn load_addr(cpu: &Cpu, addr: u16) -> u16 {
-        cpu.bus.peek(addr + 1).wrapping_add(cpu.y) as u16
+    fn load_addr<T: ReadOrPeek>(mut reader: T, addr: u16) -> u16 {
+        reader.read_or_peek(addr + 1).wrapping_add(reader.cpu().y) as u16
     }
 
     fn format(cpu: &Cpu, addr: u16) -> String {
         return format!(
             " {:02X}+Y ={:04X} @ {:02X}",
             cpu.bus.peek(addr + 1),
-            Self::load_addr(cpu, addr),
+            Self::load_addr(cpu.immutable_bus_reader(), addr),
             Self::peek_operand(cpu, addr)
         );
     }
@@ -681,8 +685,8 @@ impl AddressMode for Relative {
     const OPERAND_SIZE: usize = 1;
     const BASE_CYCLE_COUNT: usize = 2;
 
-    fn load_addr(cpu: &Cpu, addr: u16) -> u16 {
-        let delta = cpu.bus.peek(addr + 1) as i8 as i16;
+    fn load_addr<T: ReadOrPeek>(mut reader: T, addr: u16) -> u16 {
+        let delta = reader.read_or_peek(addr + 1) as i8 as i16;
         let base_addr = addr + 1 + Self::OPERAND_SIZE as u16;
         if delta > 0 {
             base_addr.wrapping_add(delta.unsigned_abs())
@@ -696,7 +700,7 @@ impl AddressMode for Relative {
         return format!(
             " {:+02X} ={:04X} @ {:02X}",
             relative_addr,
-            Self::load_addr(cpu, addr),
+            Self::load_addr(cpu.immutable_bus_reader(), addr),
             Self::peek_operand(cpu, addr)
         );
     }
@@ -707,14 +711,20 @@ impl AddressMode for Indirect {
     const OPERAND_SIZE: usize = 2;
     const BASE_CYCLE_COUNT: usize = 5;
 
-    fn load_addr(cpu: &Cpu, addr: u16) -> u16 {
-        let indirect_addr = cpu.bus.peek_u16(addr + 1);
+    fn load_addr<T: ReadOrPeek>(mut reader: T, addr: u16) -> u16 {
+        let indirect_addr = reader.read_or_peek_u16(addr + 1);
         let bytes = if indirect_addr & 0x00FF == 0x00FF {
             // CPU Bug: Address wraps around inside page.
             let page = indirect_addr & 0xFF00;
-            [cpu.bus.peek(indirect_addr), cpu.bus.peek(page)]
+            [
+                reader.read_or_peek(indirect_addr),
+                reader.read_or_peek(page),
+            ]
         } else {
-            [cpu.bus.peek(indirect_addr), cpu.bus.peek(indirect_addr + 1)]
+            [
+                reader.read_or_peek(indirect_addr),
+                reader.read_or_peek(indirect_addr + 1),
+            ]
         };
         u16::from_le_bytes(bytes)
     }
@@ -724,7 +734,7 @@ impl AddressMode for Indirect {
         return format!(
             " (${:04X}) ={:04X} @ {:02X}",
             indirect_addr,
-            Self::load_addr(cpu, addr),
+            Self::load_addr(cpu.immutable_bus_reader(), addr),
             Self::peek_operand(cpu, addr)
         );
     }
@@ -735,11 +745,13 @@ impl AddressMode for IndirectY {
     const OPERAND_SIZE: usize = 1;
     const BASE_CYCLE_COUNT: usize = 4;
 
-    fn load_addr(cpu: &Cpu, addr: u16) -> u16 {
-        let indirect_addr = cpu.bus.peek(addr + 1);
-        cpu.bus
-            .zero_page_peek_u16(indirect_addr)
-            .wrapping_add(cpu.y as u16)
+    fn load_addr<T: ReadOrPeek>(mut reader: T, addr: u16) -> u16 {
+        let indirect_addr = reader.read_or_peek(addr + 1);
+        let target_addr = u16::from_le_bytes([
+            reader.read_or_peek(indirect_addr as u16),
+            reader.read_or_peek(indirect_addr.wrapping_add(1) as u16),
+        ]);
+        target_addr.wrapping_add(reader.cpu().y as u16)
     }
 
     fn cycle_count(cpu: &mut Cpu, addr: u16, mode: MemoryAccessMode) -> usize {
@@ -768,7 +780,7 @@ impl AddressMode for IndirectY {
             " (${:02X})={:04X}+Y ={:04X} @ {:02X}",
             indirect_addr,
             indirect,
-            Self::load_addr(cpu, addr),
+            Self::load_addr(cpu.immutable_bus_reader(), addr),
             Self::peek_operand(cpu, addr)
         );
     }
@@ -779,13 +791,13 @@ impl AddressMode for IndirectX {
     const OPERAND_SIZE: usize = 1;
     const BASE_CYCLE_COUNT: usize = 5;
 
-    fn load_addr(cpu: &Cpu, addr: u16) -> u16 {
+    fn load_addr<T: ReadOrPeek>(mut reader: T, addr: u16) -> u16 {
         // Note: Zero-page address lookup will wrap around from 0xFF to 0x00.
         // TODO: Implement zero page u16 reads in bus
-        let indirect_addr = cpu.bus.peek(addr + 1).wrapping_add(cpu.x);
+        let indirect_addr = reader.read_or_peek(addr + 1).wrapping_add(reader.cpu().x);
         let bytes = [
-            cpu.bus.peek(indirect_addr as u16),
-            cpu.bus.peek(indirect_addr.wrapping_add(1) as u16),
+            reader.read_or_peek(indirect_addr as u16),
+            reader.read_or_peek(indirect_addr.wrapping_add(1) as u16),
         ];
         u16::from_le_bytes(bytes)
     }
@@ -795,7 +807,7 @@ impl AddressMode for IndirectX {
         return format!(
             " (${:02X}+X) ={:04X} @{:02X}",
             indirect_addr,
-            Self::load_addr(cpu, addr),
+            Self::load_addr(cpu.immutable_bus_reader(), addr),
             Self::peek_operand(cpu, addr)
         );
     }
@@ -823,16 +835,36 @@ fn branch(cpu: &mut Cpu, target_addr: u16) {
 ////////////////////////////////////////////////////////////////////////////////
 // Operation Implementations
 
+// Experiment:
+// Can reduce the boilerplate to:
+//
+// fn sta(cpu: &mut Cpu, operand_addr: u16) {
+//   cpu.write_u8(operand_addr, cpu.a);
+// }
+//
+// with this cpu method:
+//
+// fn store_operand(&mut self, addr: u16, value: u8) {
+//    let cycles = self.bus.write_u8(operand_addr, value);
+//    self.advance_clock(cycles);
+// }
+//
+// So the CPU provides and API for operations that handle memory access and
+// properly counts cycles to do so.
+//
+// The address is preloaded for each operation. That means we need a few
+// special cases for accumulator
+
 // J** (Jump) / RT* (Return)
 
 fn jmp<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
-    cpu.program_counter = AM::load_addr(cpu, addr);
+    cpu.program_counter = AM::load_addr(cpu.mutable_bus_reader(), addr);
     AM::advance_clock(cpu, addr, MemoryAccessMode::Addr);
 }
 
 fn jsr<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
     cpu.stack_push_u16(cpu.program_counter - 1);
-    cpu.program_counter = AM::load_addr(cpu, addr);
+    cpu.program_counter = AM::load_addr(cpu.mutable_bus_reader(), addr);
     AM::advance_clock(cpu, addr, MemoryAccessMode::Addr);
     cpu.advance_clock(3);
 }
@@ -964,56 +996,64 @@ fn cli<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
 fn bcs<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
     AM::advance_clock(cpu, addr, MemoryAccessMode::Addr);
     if cpu.status_flags.contains(StatusFlags::CARRY) {
-        branch(cpu, AM::load_addr(cpu, addr));
+        let target_addr = AM::load_addr(cpu.mutable_bus_reader(), addr);
+        branch(cpu, target_addr);
     }
 }
 
 fn bcc<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
     AM::advance_clock(cpu, addr, MemoryAccessMode::Addr);
     if !cpu.status_flags.contains(StatusFlags::CARRY) {
-        branch(cpu, AM::load_addr(cpu, addr));
+        let target_addr = AM::load_addr(cpu.mutable_bus_reader(), addr);
+        branch(cpu, target_addr);
     }
 }
 
 fn beq<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
     AM::advance_clock(cpu, addr, MemoryAccessMode::Addr);
     if cpu.status_flags.contains(StatusFlags::ZERO) {
-        branch(cpu, AM::load_addr(cpu, addr));
+        let target_addr = AM::load_addr(cpu.mutable_bus_reader(), addr);
+        branch(cpu, target_addr);
     }
 }
 
 fn bne<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
     AM::advance_clock(cpu, addr, MemoryAccessMode::Addr);
     if !cpu.status_flags.contains(StatusFlags::ZERO) {
-        branch(cpu, AM::load_addr(cpu, addr));
+        let target_addr = AM::load_addr(cpu.mutable_bus_reader(), addr);
+        branch(cpu, target_addr);
     }
 }
 
 fn bmi<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
     AM::advance_clock(cpu, addr, MemoryAccessMode::Addr);
     if cpu.status_flags.contains(StatusFlags::NEGATIVE) {
-        branch(cpu, AM::load_addr(cpu, addr));
+        let target_addr = AM::load_addr(cpu.mutable_bus_reader(), addr);
+        branch(cpu, target_addr);
     }
 }
 
 fn bpl<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
     AM::advance_clock(cpu, addr, MemoryAccessMode::Addr);
     if !cpu.status_flags.contains(StatusFlags::NEGATIVE) {
-        branch(cpu, AM::load_addr(cpu, addr));
+        let target_addr = AM::load_addr(cpu.mutable_bus_reader(), addr);
+        branch(cpu, target_addr);
     }
 }
 
 fn bvs<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
     AM::advance_clock(cpu, addr, MemoryAccessMode::Addr);
     if cpu.status_flags.contains(StatusFlags::OVERFLOW) {
-        branch(cpu, AM::load_addr(cpu, addr));
+        let target_addr = AM::load_addr(cpu.mutable_bus_reader(), addr);
+        branch(cpu, target_addr);
     }
 }
 
 fn bvc<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
     AM::advance_clock(cpu, addr, MemoryAccessMode::Addr);
     if !cpu.status_flags.contains(StatusFlags::OVERFLOW) {
-        branch(cpu, AM::load_addr(cpu, addr));
+        let target_addr = AM::load_addr(cpu.mutable_bus_reader(), addr);
+        branch(cpu, target_addr);
     }
 }
 

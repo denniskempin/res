@@ -266,4 +266,59 @@ impl Cpu {
         self.bus
             .peek_slice(Self::STACK_ADDR + self.sp as u16 + 1, stack_entries)
     }
+
+    /// Returns a struct that implements ReadOrPeek and performs
+    /// mutable reads.
+    fn mutable_bus_reader(&mut self) -> MutableBusReader {
+        BusReader { cpu: self }
+    }
+
+    /// Returns a struct that implements ReadOrPeek and performs
+    /// immutable peeks.
+    fn immutable_bus_reader(&self) -> ImmutableBusReader {
+        ImmutableBusReader { cpu: self }
+    }
+}
+
+/// Wrapper for abstraction over mutability. See ReadOrPeek.
+struct BusReader<T> {
+    cpu: T,
+}
+type MutableBusReader<'a> = BusReader<&'a mut Cpu>;
+type ImmutableBusReader<'a> = BusReader<&'a Cpu>;
+
+/// Allows abstraction over mutability to read if mutable and
+/// peek if immutable.
+trait ReadOrPeek {
+    fn cpu(&self) -> &Cpu;
+    fn read_or_peek(&mut self, addr: u16) -> u8;
+    fn read_or_peek_u16(&mut self, addr: u16) -> u16;
+}
+
+impl<'a> ReadOrPeek for MutableBusReader<'a> {
+    fn cpu(&self) -> &Cpu {
+        self.cpu
+    }
+
+    fn read_or_peek(&mut self, addr: u16) -> u8 {
+        self.cpu.bus.read(addr)
+    }
+
+    fn read_or_peek_u16(&mut self, addr: u16) -> u16 {
+        self.cpu.bus.read_u16(addr)
+    }
+}
+
+impl<'a> ReadOrPeek for ImmutableBusReader<'a> {
+    fn cpu(&self) -> &Cpu {
+        self.cpu
+    }
+
+    fn read_or_peek(&mut self, addr: u16) -> u8 {
+        self.cpu.bus.peek(addr)
+    }
+
+    fn read_or_peek_u16(&mut self, addr: u16) -> u16 {
+        self.cpu.bus.peek_u16(addr)
+    }
 }
