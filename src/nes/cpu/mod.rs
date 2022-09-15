@@ -10,7 +10,6 @@ use super::cartridge::Cartridge;
 use super::joypad::Joypad;
 use super::ppu::Ppu;
 use anyhow::Result;
-use bitflags::bitflags;
 
 ////////////////////////////////////////////////////////////////////////////////
 // CpuBus
@@ -147,35 +146,44 @@ impl CpuBus {
 ////////////////////////////////////////////////////////////////////////////////
 // StatusFlags
 
-bitflags! {
-    #[derive(Default)]
-    pub struct StatusFlags: u8 {
-        const NEGATIVE = 0b1000_0000;
-        const OVERFLOW = 0b0100_0000;
-        const UNUSED = 0b0010_0000;
-        const BREAK = 0b0001_0000;
-        const DECIMAL = 0b0000_1000;
-        const INTERRUPT = 0b0000_0100;
-        const ZERO = 0b0000_0010;
-        const CARRY = 0b0000_0001;
-    }
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub struct StatusFlags {
+    carry: bool,
+    zero: bool,
+    interrupt: bool,
+    decimal: bool,
+    break_flag: bool,
+    unused: bool,
+    overflow: bool,
+    negative: bool,
 }
 
 impl StatusFlags {
-    pub fn carry(&self) -> bool {
-        self.contains(StatusFlags::CARRY)
-    }
-    pub fn set_carry(&mut self, value: bool) {
-        self.set(StatusFlags::CARRY, value);
+    pub fn bits(&self) -> u8 {
+        (self.carry as u8)
+            | (self.zero as u8) << 1
+            | (self.interrupt as u8) << 2
+            | (self.decimal as u8) << 3
+            | (self.break_flag as u8) << 4
+            | (self.unused as u8) << 5
+            | (self.overflow as u8) << 6
+            | (self.negative as u8) << 7
     }
 
-    pub fn overflow(&self) -> bool {
-        self.contains(StatusFlags::OVERFLOW)
-    }
-    pub fn set_overflow(&mut self, value: bool) {
-        self.set(StatusFlags::OVERFLOW, value);
+    pub fn from_bits(bits: u8) -> StatusFlags {
+        StatusFlags {
+            carry: bits & 0b0000_0001 > 0,
+            zero: bits & 0b0000_0010 > 0,
+            interrupt: bits & 0b0000_0100 > 0,
+            decimal: bits & 0b0000_1000 > 0,
+            break_flag: bits & 0b0001_0000 > 0,
+            unused: bits & 0b0010_0000 > 0,
+            overflow: bits & 0b0100_0000 > 0,
+            negative: bits & 0b1000_0000 > 0,
+        }
     }
 }
+
 #[derive(Copy, Clone)]
 enum InterruptVector {
     Nmi = 0xFFFA,
@@ -207,7 +215,7 @@ impl Default for Cpu {
             a: 0,
             x: 0,
             y: 0,
-            status_flags: StatusFlags::from_bits_truncate(0x24),
+            status_flags: StatusFlags::from_bits(0x24),
             program_counter: 0,
             halt: false,
             sp: 0xFD,
@@ -238,7 +246,7 @@ impl Cpu {
         if self.bus.poll_nmi_interrupt() {
             self.stack_push_u16(self.program_counter);
             self.stack_push(self.status_flags.bits());
-            self.status_flags.insert(StatusFlags::INTERRUPT);
+            self.status_flags.interrupt = true;
             self.program_counter = self.bus.read_u16(InterruptVector::Nmi as u16);
             self.advance_clock(2);
         }
