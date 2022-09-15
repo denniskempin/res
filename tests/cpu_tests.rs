@@ -28,15 +28,6 @@ pub fn test_basic_program() {
 }
 
 #[test]
-pub fn test_blargg_nes_cpu_test5() {
-    // Run nestest.nes and compare results against a log file collected by
-    // running the same file in the accurate Nintendulator.
-    let mut system =
-        System::with_ines(Path::new("nes-test-roms/blargg_nes_cpu_test5/official.nes")).unwrap();
-    system.execute_until_halt().unwrap();
-}
-
-#[test]
 pub fn test_nestest() {
     // Run nestest.nes and compare results against a log file collected by
     // running the same file in the accurate Nintendulator.
