@@ -33,7 +33,7 @@ impl System {
                     .bus
                     .peek_slice(self.cpu.program_counter, operation.size() as u16)
                     .collect(),
-                legal: operation.is_legal(),
+                legal: true,
                 opcode_str: operation.format(&self.cpu),
                 a: self.cpu.a,
                 x: self.cpu.x,

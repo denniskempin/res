@@ -1,5 +1,4 @@
 use anyhow::Result;
-use konst::eq_str;
 
 use super::Cpu;
 use super::ReadOrPeek;
@@ -37,10 +36,6 @@ impl Operation {
     pub fn format(self, cpu: &Cpu) -> String {
         (self.table_entry.format_fn)(cpu, self.addr)
     }
-
-    pub fn is_legal(&self) -> bool {
-        self.table_entry.legal
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -50,7 +45,6 @@ macro_rules! opcode {
     ($code: literal, $method: ident, $address_mode: ident) => {
         OpCodeTableEntry {
             code: $code,
-            legal: is_legal($code, stringify!($method)),
             operand_size: $address_mode::OPERAND_SIZE,
             execute_fn: |cpu, addr| $method::<$address_mode>(cpu, addr),
             format_fn: |cpu, addr| {
@@ -80,7 +74,7 @@ lazy_static! {
             opcode!(0x50, bvc, Relative),
             opcode!(0x60, rts, Implicit),
             opcode!(0x70, bvs, Relative),
-            opcode!(0x80, nop, Immediate),
+            opcode!(0x80, ill, Immediate),
             opcode!(0x90, bcc, Relative),
             opcode!(0xA0, ldy, Immediate),
             opcode!(0xB0, bcs, Relative),
@@ -116,50 +110,50 @@ lazy_static! {
             opcode!(0x52, ill, Implicit),
             opcode!(0x62, ill, Implicit),
             opcode!(0x72, ill, Implicit),
-            opcode!(0x82, nop, Immediate),
+            opcode!(0x82, ill, Immediate),
             opcode!(0x92, ill, Implicit),
             opcode!(0xA2, ldx, Immediate),
             opcode!(0xB2, ill, Implicit),
-            opcode!(0xC2, nop, Immediate),
+            opcode!(0xC2, ill, Immediate),
             opcode!(0xD2, ill, Implicit),
-            opcode!(0xE2, nop, Immediate),
+            opcode!(0xE2, ill, Immediate),
             opcode!(0xF2, ill, Implicit),
 
             // Codes ending in 3
-            opcode!(0x03, slo, IndirectX),
-            opcode!(0x13, slo, IndirectY),
-            opcode!(0x23, rla, IndirectX),
-            opcode!(0x33, rla, IndirectY),
-            opcode!(0x43, sre, IndirectX),
-            opcode!(0x53, sre, IndirectY),
-            opcode!(0x63, rra, IndirectX),
-            opcode!(0x73, rra, IndirectY),
-            opcode!(0x83, sax, IndirectX),
-            opcode!(0x93, sha, IndirectY),
-            opcode!(0xA3, lax, IndirectX),
-            opcode!(0xB3, lax, IndirectY),
-            opcode!(0xC3, dcp, IndirectX),
-            opcode!(0xD3, dcp, IndirectY),
-            opcode!(0xE3, isc, IndirectX),
-            opcode!(0xF3, isc, IndirectY),
+            opcode!(0x03, ill, IndirectX),
+            opcode!(0x13, ill, IndirectY),
+            opcode!(0x23, ill, IndirectX),
+            opcode!(0x33, ill, IndirectY),
+            opcode!(0x43, ill, IndirectX),
+            opcode!(0x53, ill, IndirectY),
+            opcode!(0x63, ill, IndirectX),
+            opcode!(0x73, ill, IndirectY),
+            opcode!(0x83, ill, IndirectX),
+            opcode!(0x93, ill, IndirectY),
+            opcode!(0xA3, ill, IndirectX),
+            opcode!(0xB3, ill, IndirectY),
+            opcode!(0xC3, ill, IndirectX),
+            opcode!(0xD3, ill, IndirectY),
+            opcode!(0xE3, ill, IndirectX),
+            opcode!(0xF3, ill, IndirectY),
 
             // Codes ending in 4
-            opcode!(0x04, nop, ZeroPage),
-            opcode!(0x14, nop, ZeroPageX),
+            opcode!(0x04, ill, ZeroPage),
+            opcode!(0x14, ill, ZeroPageX),
             opcode!(0x24, bit, ZeroPage),
-            opcode!(0x34, nop, ZeroPageX),
-            opcode!(0x44, nop, ZeroPage),
-            opcode!(0x54, nop, ZeroPageX),
-            opcode!(0x64, nop, ZeroPage),
-            opcode!(0x74, nop, ZeroPageX),
+            opcode!(0x34, ill, ZeroPageX),
+            opcode!(0x44, ill, ZeroPage),
+            opcode!(0x54, ill, ZeroPageX),
+            opcode!(0x64, ill, ZeroPage),
+            opcode!(0x74, ill, ZeroPageX),
             opcode!(0x84, sty, ZeroPage),
             opcode!(0x94, sty, ZeroPageX),
             opcode!(0xA4, ldy, ZeroPage),
             opcode!(0xB4, ldy, ZeroPageX),
             opcode!(0xC4, cpy, ZeroPage),
-            opcode!(0xD4, nop, ZeroPageX),
+            opcode!(0xD4, ill, ZeroPageX),
             opcode!(0xE4, cpx, ZeroPage),
-            opcode!(0xF4, nop, ZeroPageX),
+            opcode!(0xF4, ill, ZeroPageX),
 
             // Codes ending in 5
             opcode!(0x05, ora, ZeroPage),
@@ -198,22 +192,22 @@ lazy_static! {
             opcode!(0xF6, inc, ZeroPageX),
 
             // Codes ending in 7
-            opcode!(0x07, slo, ZeroPage),
-            opcode!(0x17, slo, ZeroPageX),
-            opcode!(0x27, rla, ZeroPage),
-            opcode!(0x37, rla, ZeroPageX),
-            opcode!(0x47, sre, ZeroPage),
-            opcode!(0x57, sre, ZeroPageX),
-            opcode!(0x67, rra, ZeroPage),
-            opcode!(0x77, rra, ZeroPageX),
-            opcode!(0x87, sax, ZeroPage),
-            opcode!(0x97, sax, ZeroPageY),
-            opcode!(0xA7, lax, ZeroPage),
-            opcode!(0xB7, lax, ZeroPageY),
-            opcode!(0xC7, dcp, ZeroPage),
-            opcode!(0xD7, dcp, ZeroPageX),
-            opcode!(0xE7, isc, ZeroPage),
-            opcode!(0xF7, isc, ZeroPageX),
+            opcode!(0x07, ill, ZeroPage),
+            opcode!(0x17, ill, ZeroPageX),
+            opcode!(0x27, ill, ZeroPage),
+            opcode!(0x37, ill, ZeroPageX),
+            opcode!(0x47, ill, ZeroPage),
+            opcode!(0x57, ill, ZeroPageX),
+            opcode!(0x67, ill, ZeroPage),
+            opcode!(0x77, ill, ZeroPageX),
+            opcode!(0x87, ill, ZeroPage),
+            opcode!(0x97, ill, ZeroPageY),
+            opcode!(0xA7, ill, ZeroPage),
+            opcode!(0xB7, ill, ZeroPageY),
+            opcode!(0xC7, ill, ZeroPage),
+            opcode!(0xD7, ill, ZeroPageX),
+            opcode!(0xE7, ill, ZeroPage),
+            opcode!(0xF7, ill, ZeroPageX),
 
             // Codes ending in 8
             opcode!(0x08, php, Implicit),
@@ -242,7 +236,7 @@ lazy_static! {
             opcode!(0x59, eor, AbsoluteY),
             opcode!(0x69, adc, Immediate),
             opcode!(0x79, adc, AbsoluteY),
-            opcode!(0x89, nop, Immediate),
+            opcode!(0x89, ill, Immediate),
             opcode!(0x99, sta, AbsoluteY),
             opcode!(0xA9, lda, Immediate),
             opcode!(0xB9, lda, AbsoluteY),
@@ -253,57 +247,57 @@ lazy_static! {
 
             // Codes ending in A
             opcode!(0x0A, asl, Acumulator),
-            opcode!(0x1A, nop, Implicit),
+            opcode!(0x1A, ill, Implicit),
             opcode!(0x2A, rol, Acumulator),
-            opcode!(0x3A, nop, Implicit),
+            opcode!(0x3A, ill, Implicit),
             opcode!(0x4A, lsr, Acumulator),
-            opcode!(0x5A, nop, Implicit),
+            opcode!(0x5A, ill, Implicit),
             opcode!(0x6A, ror, Acumulator),
-            opcode!(0x7A, nop, Implicit),
+            opcode!(0x7A, ill, Implicit),
             opcode!(0x8A, txa, Implicit),
             opcode!(0x9A, txs, Implicit),
             opcode!(0xAA, tax, Implicit),
             opcode!(0xBA, tsx, Implicit),
             opcode!(0xCA, dex, Implicit),
-            opcode!(0xDA, nop, Implicit),
+            opcode!(0xDA, ill, Implicit),
             opcode!(0xEA, nop, Implicit),
-            opcode!(0xFA, nop, Implicit),
+            opcode!(0xFA, ill, Implicit),
 
             // Codes ending in B
-            opcode!(0x0B, anc, Immediate),
-            opcode!(0x1B, slo, AbsoluteY),
-            opcode!(0x2B, anc, Immediate),
-            opcode!(0x3B, rla, AbsoluteY),
-            opcode!(0x4B, alr, Immediate),
-            opcode!(0x5B, sre, AbsoluteY),
-            opcode!(0x6B, arr, Immediate),
-            opcode!(0x7B, rra, AbsoluteY),
-            opcode!(0x8B, ane, Immediate),
-            opcode!(0x9B, tas, AbsoluteY),
-            opcode!(0xAB, lxa, Immediate),
-            opcode!(0xBB, las, AbsoluteY),
-            opcode!(0xCB, sbx, Immediate),
-            opcode!(0xDB, dcp, AbsoluteY),
-            opcode!(0xEB, sbc, Immediate),
-            opcode!(0xFB, isc, AbsoluteY),
+            opcode!(0x0B, ill, Immediate),
+            opcode!(0x1B, ill, AbsoluteY),
+            opcode!(0x2B, ill, Immediate),
+            opcode!(0x3B, ill, AbsoluteY),
+            opcode!(0x4B, ill, Immediate),
+            opcode!(0x5B, ill, AbsoluteY),
+            opcode!(0x6B, ill, Immediate),
+            opcode!(0x7B, ill, AbsoluteY),
+            opcode!(0x8B, ill, Immediate),
+            opcode!(0x9B, ill, AbsoluteY),
+            opcode!(0xAB, ill, Immediate),
+            opcode!(0xBB, ill, AbsoluteY),
+            opcode!(0xCB, ill, Immediate),
+            opcode!(0xDB, ill, AbsoluteY),
+            opcode!(0xEB, ill, Immediate),
+            opcode!(0xFB, ill, AbsoluteY),
 
             // Codes ending in C
-            opcode!(0x0C, nop, Absolute),
-            opcode!(0x1C, nop, AbsoluteX),
+            opcode!(0x0C, ill, Absolute),
+            opcode!(0x1C, ill, AbsoluteX),
             opcode!(0x2C, bit, Absolute),
-            opcode!(0x3C, nop, AbsoluteX),
+            opcode!(0x3C, ill, AbsoluteX),
             opcode!(0x4C, jmp, Absolute),
-            opcode!(0x5C, nop, AbsoluteX),
+            opcode!(0x5C, ill, AbsoluteX),
             opcode!(0x6C, jmp, Indirect),
-            opcode!(0x7C, nop, AbsoluteX),
+            opcode!(0x7C, ill, AbsoluteX),
             opcode!(0x8C, sty, Absolute),
             opcode!(0x9C, ill, AbsoluteX),
             opcode!(0xAC, ldy, Absolute),
             opcode!(0xBC, ldy, AbsoluteX),
             opcode!(0xCC, cpy, Absolute),
-            opcode!(0xDC, nop, AbsoluteX),
+            opcode!(0xDC, ill, AbsoluteX),
             opcode!(0xEC, cpx, Absolute),
-            opcode!(0xFC, nop, AbsoluteX),
+            opcode!(0xFC, ill, AbsoluteX),
 
 
             // Codes ending in D
@@ -343,22 +337,22 @@ lazy_static! {
             opcode!(0xFE, inc, AbsoluteX),
 
             // Codes endding in F
-            opcode!(0x0F, slo, Absolute),
-            opcode!(0x1F, slo, AbsoluteX),
-            opcode!(0x2F, rla, Absolute),
-            opcode!(0x3F, rla, AbsoluteX),
-            opcode!(0x4F, sre, Absolute),
-            opcode!(0x5F, sre, AbsoluteX),
-            opcode!(0x6F, rra, Absolute),
-            opcode!(0x7F, rra, AbsoluteX),
-            opcode!(0x8F, sax, Absolute),
-            opcode!(0x9F, sha, AbsoluteX),
-            opcode!(0xAF, lax, Absolute),
-            opcode!(0xBF, lax, AbsoluteY),
-            opcode!(0xCF, dcp, Absolute),
-            opcode!(0xDF, dcp, AbsoluteX),
-            opcode!(0xEF, isc, Absolute),
-            opcode!(0xFF, isc, AbsoluteX),
+            opcode!(0x0F, ill, Absolute),
+            opcode!(0x1F, ill, AbsoluteX),
+            opcode!(0x2F, ill, Absolute),
+            opcode!(0x3F, ill, AbsoluteX),
+            opcode!(0x4F, ill, Absolute),
+            opcode!(0x5F, ill, AbsoluteX),
+            opcode!(0x6F, ill, Absolute),
+            opcode!(0x7F, ill, AbsoluteX),
+            opcode!(0x8F, ill, Absolute),
+            opcode!(0x9F, ill, AbsoluteX),
+            opcode!(0xAF, ill, Absolute),
+            opcode!(0xBF, ill, AbsoluteY),
+            opcode!(0xCF, ill, Absolute),
+            opcode!(0xDF, ill, AbsoluteX),
+            opcode!(0xEF, ill, Absolute),
+            opcode!(0xFF, ill, AbsoluteX),
         ];
 
         // Turn list of codes into opcode lookup table
@@ -377,7 +371,6 @@ lazy_static! {
 #[derive(Copy, Clone)]
 struct OpCodeTableEntry {
     pub code: u8,
-    pub legal: bool,
     pub operand_size: usize,
     pub execute_fn: fn(cpu: &mut Cpu, addr: u16),
     pub format_fn: fn(cpu: &Cpu, addr: u16) -> String,
@@ -387,30 +380,10 @@ impl Default for OpCodeTableEntry {
     fn default() -> Self {
         Self {
             code: Default::default(),
-            legal: false,
             operand_size: 0,
             execute_fn: |_, _| unimplemented!(),
             format_fn: |_, _| "N/A".to_string(),
         }
-    }
-}
-const fn is_legal(code: u8, method: &str) -> bool {
-    match method {
-        _ if eq_str(method, "nop") => code == 0xEA,
-        _ if eq_str(method, "ill") => false,
-        _ if eq_str(method, "sax") => false,
-        _ if eq_str(method, "dcp") => false,
-        _ if eq_str(method, "lax") => false,
-        _ if eq_str(method, "isc") => false,
-        _ if eq_str(method, "sla") => false,
-        _ if eq_str(method, "slo") => false,
-        _ if eq_str(method, "rla") => false,
-        _ if eq_str(method, "sre") => false,
-        _ if eq_str(method, "rra") => false,
-        _ if eq_str(method, "sha") => false,
-        _ if eq_str(method, "anc") => false,
-        _ if eq_str(method, "alr") => false,
-        _ => code != 0xEB,
     }
 }
 
@@ -1287,143 +1260,7 @@ fn nop<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
     AM::advance_clock(cpu, addr, MemoryAccessMode::Read);
 }
 
-// Illegal Instructions
-
+// Illegal Instruction
 fn ill<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
     panic!("Illegal Opcode {:02X}", AM::load_operand(cpu, addr));
-}
-
-fn lax<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
-    AM::advance_clock(cpu, addr, MemoryAccessMode::Read);
-    cpu.a = AM::load_operand(cpu, addr);
-    cpu.x = cpu.a;
-    update_negative_zero_flags(cpu, cpu.x);
-}
-
-fn sax<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
-    AM::advance_clock(cpu, addr, MemoryAccessMode::Write);
-    AM::store_operand(cpu, addr, cpu.a & cpu.x);
-}
-
-fn dcp<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
-    AM::advance_clock(cpu, addr, MemoryAccessMode::Modify);
-    let value = AM::load_operand(cpu, addr).wrapping_sub(1);
-    AM::store_operand(cpu, addr, value);
-    let (cmp, overflow) = cpu.a.overflowing_sub(value);
-    update_negative_zero_flags(cpu, cmp);
-    cpu.status_flags.set(StatusFlags::CARRY, !overflow);
-}
-
-fn isc<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
-    AM::advance_clock(cpu, addr, MemoryAccessMode::Modify);
-    let value = AM::load_operand(cpu, addr).wrapping_add(1);
-    AM::store_operand(cpu, addr, value);
-    let carry: u16 = if cpu.status_flags.contains(StatusFlags::CARRY) {
-        1
-    } else {
-        0
-    };
-    let operand = (value as i8).wrapping_neg().wrapping_sub(1) as u8;
-    let result = cpu.a as u16 + operand as u16 + carry;
-
-    cpu.status_flags.set(StatusFlags::CARRY, result > 0xFF);
-    cpu.status_flags.set(
-        StatusFlags::OVERFLOW,
-        (operand ^ result as u8) & (result as u8 ^ cpu.a) & 0x80 != 0,
-    );
-    cpu.a = result as u8;
-    update_negative_zero_flags(cpu, cpu.a);
-}
-
-fn slo<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
-    AM::advance_clock(cpu, addr, MemoryAccessMode::Modify);
-    let operand = AM::load_operand(cpu, addr);
-    let (result, _) = operand.overflowing_shl(1);
-    AM::store_operand(cpu, addr, result);
-    cpu.a |= result;
-    update_negative_zero_flags(cpu, cpu.a);
-    cpu.status_flags
-        .set(StatusFlags::CARRY, (operand & 0x80) != 0);
-}
-
-fn rla<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
-    AM::advance_clock(cpu, addr, MemoryAccessMode::Modify);
-    let operand = AM::load_operand(cpu, addr);
-    let (mut result, _) = operand.overflowing_shl(1);
-    if cpu.status_flags.contains(StatusFlags::CARRY) {
-        result |= 0b0000_0001;
-    }
-    AM::store_operand(cpu, addr, result);
-    cpu.a &= result;
-    update_negative_zero_flags(cpu, cpu.a);
-    cpu.status_flags
-        .set(StatusFlags::CARRY, (operand & 0x80) != 0);
-}
-
-fn rra<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
-    AM::advance_clock(cpu, addr, MemoryAccessMode::Modify);
-    let operand = AM::load_operand(cpu, addr);
-    let (mut result, _) = operand.overflowing_shr(1);
-    if cpu.status_flags.contains(StatusFlags::CARRY) {
-        result |= 0b1000_0000;
-    }
-    AM::store_operand(cpu, addr, result);
-    let carry: u16 = if (operand & 0x01) != 0 { 1 } else { 0 };
-    let operand = result;
-    let result = cpu.a as u16 + operand as u16 + carry;
-
-    cpu.status_flags.set(StatusFlags::CARRY, result > 0xFF);
-    cpu.status_flags.set(
-        StatusFlags::OVERFLOW,
-        (operand ^ result as u8) & (result as u8 ^ cpu.a) & 0x80 != 0,
-    );
-    cpu.a = result as u8;
-    update_negative_zero_flags(cpu, cpu.a);
-}
-
-fn sre<AM: AddressMode>(cpu: &mut Cpu, addr: u16) {
-    AM::advance_clock(cpu, addr, MemoryAccessMode::Modify);
-    let operand = AM::load_operand(cpu, addr);
-    let (result, _) = operand.overflowing_shr(1);
-    AM::store_operand(cpu, addr, result);
-    cpu.status_flags
-        .set(StatusFlags::CARRY, (operand & 0x01) != 0);
-    cpu.a ^= result;
-    update_negative_zero_flags(cpu, cpu.a);
-}
-
-fn sha<AM: AddressMode>(_cpu: &mut Cpu, _addr: u16) {
-    unimplemented!();
-}
-
-fn alr<AM: AddressMode>(_cpu: &mut Cpu, _addr: u16) {
-    unimplemented!();
-}
-
-fn anc<AM: AddressMode>(_cpu: &mut Cpu, _addr: u16) {
-    unimplemented!();
-}
-
-fn arr<AM: AddressMode>(_cpu: &mut Cpu, _addr: u16) {
-    unimplemented!();
-}
-
-fn ane<AM: AddressMode>(_cpu: &mut Cpu, _addr: u16) {
-    unimplemented!();
-}
-
-fn tas<AM: AddressMode>(_cpu: &mut Cpu, _addr: u16) {
-    unimplemented!();
-}
-
-fn lxa<AM: AddressMode>(_cpu: &mut Cpu, _addr: u16) {
-    unimplemented!();
-}
-
-fn las<AM: AddressMode>(_cpu: &mut Cpu, _addr: u16) {
-    unimplemented!();
-}
-
-fn sbx<AM: AddressMode>(_cpu: &mut Cpu, _addr: u16) {
-    unimplemented!();
 }
