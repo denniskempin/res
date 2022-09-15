@@ -982,57 +982,49 @@ fn cli<AM: Operand>(cpu: &mut Cpu, _operand: AM) {
 
 fn bcs<AM: Operand>(cpu: &mut Cpu, operand: AM) {
     if cpu.status_flags.contains(StatusFlags::CARRY) {
-        let target_addr = operand.operand_addr();
-        branch(cpu, target_addr);
+        branch(cpu, operand.operand_addr());
     }
 }
 
 fn bcc<AM: Operand>(cpu: &mut Cpu, operand: AM) {
     if !cpu.status_flags.contains(StatusFlags::CARRY) {
-        let target_addr = operand.operand_addr();
-        branch(cpu, target_addr);
+        branch(cpu, operand.operand_addr());
     }
 }
 
 fn beq<AM: Operand>(cpu: &mut Cpu, operand: AM) {
     if cpu.status_flags.contains(StatusFlags::ZERO) {
-        let target_addr = operand.operand_addr();
-        branch(cpu, target_addr);
+        branch(cpu, operand.operand_addr());
     }
 }
 
 fn bne<AM: Operand>(cpu: &mut Cpu, operand: AM) {
     if !cpu.status_flags.contains(StatusFlags::ZERO) {
-        let target_addr = operand.operand_addr();
-        branch(cpu, target_addr);
+        branch(cpu, operand.operand_addr());
     }
 }
 
 fn bmi<AM: Operand>(cpu: &mut Cpu, operand: AM) {
     if cpu.status_flags.contains(StatusFlags::NEGATIVE) {
-        let target_addr = operand.operand_addr();
-        branch(cpu, target_addr);
+        branch(cpu, operand.operand_addr());
     }
 }
 
 fn bpl<AM: Operand>(cpu: &mut Cpu, operand: AM) {
     if !cpu.status_flags.contains(StatusFlags::NEGATIVE) {
-        let target_addr = operand.operand_addr();
-        branch(cpu, target_addr);
+        branch(cpu, operand.operand_addr());
     }
 }
 
 fn bvs<AM: Operand>(cpu: &mut Cpu, operand: AM) {
     if cpu.status_flags.contains(StatusFlags::OVERFLOW) {
-        let target_addr = operand.operand_addr();
-        branch(cpu, target_addr);
+        branch(cpu, operand.operand_addr());
     }
 }
 
 fn bvc<AM: Operand>(cpu: &mut Cpu, operand: AM) {
     if !cpu.status_flags.contains(StatusFlags::OVERFLOW) {
-        let target_addr = operand.operand_addr();
-        branch(cpu, target_addr);
+        branch(cpu, operand.operand_addr());
     }
 }
 
@@ -1062,38 +1054,29 @@ fn plp<AM: Operand>(cpu: &mut Cpu, _operand: AM) {
 // add / sub
 
 fn adc<AM: Operand>(cpu: &mut Cpu, operand: AM) {
-    let carry: u16 = if cpu.status_flags.contains(StatusFlags::CARRY) {
-        1
-    } else {
-        0
-    };
-    let operand = operand.load_operand(cpu);
-    let result = cpu.a as u16 + operand as u16 + carry;
+    let carry = cpu.status_flags.carry() as u16;
+    let value = operand.load_operand(cpu);
+    let result = cpu.a as u16 + value as u16 + carry;
 
-    cpu.status_flags.set(StatusFlags::CARRY, result > 0xFF);
-    cpu.status_flags.set(
-        StatusFlags::OVERFLOW,
-        (operand ^ result as u8) & (result as u8 ^ cpu.a) & 0x80 != 0,
-    );
+    // TODO: Learn the details behind the C and V flags and how they differ.
+    cpu.status_flags.set_carry(result > 0xFF);
+    cpu.status_flags
+        .set_overflow((value ^ result as u8) & (result as u8 ^ cpu.a) & 0x80 != 0);
     cpu.a = result as u8;
     update_negative_zero_flags(cpu, cpu.a);
 }
 
 fn sbc<AM: Operand>(cpu: &mut Cpu, operand: AM) {
-    let carry: u16 = if cpu.status_flags.contains(StatusFlags::CARRY) {
-        1
-    } else {
-        0
-    };
-    let operand = (operand.load_operand(cpu) as i8)
+    let carry = cpu.status_flags.carry() as u16;
+    let value = (operand.load_operand(cpu) as i8)
         .wrapping_neg()
         .wrapping_sub(1) as u8;
-    let result = cpu.a as u16 + operand as u16 + carry;
+    let result = cpu.a as u16 + value as u16 + carry;
 
-    cpu.status_flags.set(StatusFlags::CARRY, result > 0xFF);
+    cpu.status_flags.set_carry(result > 0xFF);
     cpu.status_flags.set(
         StatusFlags::OVERFLOW,
-        (operand ^ result as u8) & (result as u8 ^ cpu.a) & 0x80 != 0,
+        (value ^ result as u8) & (result as u8 ^ cpu.a) & 0x80 != 0,
     );
     cpu.a = result as u8;
     update_negative_zero_flags(cpu, cpu.a);
@@ -1121,66 +1104,62 @@ fn eor<AM: Operand>(cpu: &mut Cpu, operand: AM) {
 fn cmp<AM: Operand>(cpu: &mut Cpu, operand: AM) {
     let (value, overflow) = cpu.a.overflowing_sub(operand.load_operand(cpu));
     update_negative_zero_flags(cpu, value);
-    cpu.status_flags.set(StatusFlags::CARRY, !overflow);
+    cpu.status_flags.set_carry(!overflow);
 }
 
 fn cpx<AM: Operand>(cpu: &mut Cpu, operand: AM) {
     let (value, overflow) = cpu.x.overflowing_sub(operand.load_operand(cpu));
     update_negative_zero_flags(cpu, value);
-    cpu.status_flags.set(StatusFlags::CARRY, !overflow);
+    cpu.status_flags.set_carry(!overflow);
 }
 
 fn cpy<AM: Operand>(cpu: &mut Cpu, operand: AM) {
     let (value, overflow) = cpu.y.overflowing_sub(operand.load_operand(cpu));
     update_negative_zero_flags(cpu, value);
-    cpu.status_flags.set(StatusFlags::CARRY, !overflow);
+    cpu.status_flags.set_carry(!overflow);
 }
 
 // Shifts
 
 fn lsr<AM: Operand>(cpu: &mut Cpu, operand: AM) {
-    let operand2 = operand.load_operand(cpu);
-    let (result, _) = operand2.overflowing_shr(1);
+    let value = operand.load_operand(cpu);
+    let (result, _) = value.overflowing_shr(1);
     operand.store_operand(cpu, result);
     update_negative_zero_flags(cpu, result);
-    cpu.status_flags
-        .set(StatusFlags::CARRY, (operand2 & 0x01) != 0);
+    cpu.status_flags.set_carry((value & 0x01) != 0);
     cpu.advance_clock(1);
 }
 
 fn asl<AM: Operand>(cpu: &mut Cpu, operand: AM) {
-    let operand2 = operand.load_operand(cpu);
-    let (result, _) = operand2.overflowing_shl(1);
+    let value = operand.load_operand(cpu);
+    let (result, _) = value.overflowing_shl(1);
     operand.store_operand(cpu, result);
     update_negative_zero_flags(cpu, result);
-    cpu.status_flags
-        .set(StatusFlags::CARRY, (operand2 & 0x80) != 0);
+    cpu.status_flags.set_carry((value & 0x80) != 0);
     cpu.advance_clock(1);
 }
 
 fn ror<AM: Operand>(cpu: &mut Cpu, operand: AM) {
     let operand2 = operand.load_operand(cpu);
     let (mut result, _) = operand2.overflowing_shr(1);
-    if cpu.status_flags.contains(StatusFlags::CARRY) {
+    if cpu.status_flags.carry() {
         result |= 0b1000_0000;
     }
     operand.store_operand(cpu, result);
     update_negative_zero_flags(cpu, result);
-    cpu.status_flags
-        .set(StatusFlags::CARRY, (operand2 & 0x01) != 0);
+    cpu.status_flags.set_carry((operand2 & 0x01) != 0);
     cpu.advance_clock(1);
 }
 
 fn rol<AM: Operand>(cpu: &mut Cpu, operand: AM) {
     let operand2 = operand.load_operand(cpu);
     let (mut result, _) = operand2.overflowing_shl(1);
-    if cpu.status_flags.contains(StatusFlags::CARRY) {
+    if cpu.status_flags.carry() {
         result |= 0b0000_0001;
     }
     operand.store_operand(cpu, result);
     update_negative_zero_flags(cpu, result);
-    cpu.status_flags
-        .set(StatusFlags::CARRY, (operand2 & 0x80) != 0);
+    cpu.status_flags.set_carry((operand2 & 0x80) != 0);
     cpu.advance_clock(1);
 }
 

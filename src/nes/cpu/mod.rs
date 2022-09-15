@@ -159,7 +159,22 @@ bitflags! {
         const ZERO = 0b0000_0010;
         const CARRY = 0b0000_0001;
     }
+}
 
+impl StatusFlags {
+    pub fn carry(&self) -> bool {
+        self.contains(StatusFlags::CARRY)
+    }
+    pub fn set_carry(&mut self, value: bool) {
+        self.set(StatusFlags::CARRY, value);
+    }
+
+    pub fn overflow(&self) -> bool {
+        self.contains(StatusFlags::OVERFLOW)
+    }
+    pub fn set_overflow(&mut self, value: bool) {
+        self.set(StatusFlags::OVERFLOW, value);
+    }
 }
 #[derive(Copy, Clone)]
 enum InterruptVector {
