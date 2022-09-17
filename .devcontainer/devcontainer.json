@@ -1,7 +1,5 @@
 {
-	"build": {
-		"dockerfile": "Dockerfile"
-	},
+	"image": "ghcr.io/denniskempin/res:latest",
 	// Configure tool-specific properties.
 	"customizations": {
 		// Configure properties specific to VS Code.
