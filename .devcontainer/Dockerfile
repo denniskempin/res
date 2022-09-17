@@ -5,7 +5,8 @@ RUN pacman -Sy --noconfirm \
     wget \
     git \
     inetutils \
-    npm \
+    nodejs \
+    yarn \
     python-pip \
     openssh \
     fish \
@@ -19,5 +20,4 @@ ENV RUSTUP_HOME=/usr/local/rustup \
 RUN rustup toolchain install stable --profile minimal
 RUN rustup target add wasm32-unknown-unknown
 RUN rustup component add clippy rustfmt
-RUN --mount=type=cache,target=/cargo_target,sharing=private \
-    cargo install -f wasm-bindgen-cli basic-http-server
+RUN cargo install -f wasm-pack

@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 
 <head>
-    <title>Chip8 Emulator</title>
+    <title>Rust Entertainment System</title>
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="white">
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#404040">
 
@@ -105,18 +105,7 @@
         </p>
         <div class="lds-dual-ring"></div>
     </div>
-    <script type="module">
-        // WASM Bindings for src/lib.rs
-        import init, { start_app } from './res.js';
-
-        async function run() {
-            await init();
-            start_app("the_canvas_id");
-            document.getElementById("center_text").remove();
-        }
-
-        run();
-    </script>
+    <script src="index.js"></script>
 </body>
 
 </html>
