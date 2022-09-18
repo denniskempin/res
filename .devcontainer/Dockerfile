@@ -20,4 +20,4 @@ RUN rustup toolchain install stable --profile minimal
 RUN rustup target add wasm32-unknown-unknown
 RUN rustup component add clippy rustfmt
 
-RUN cargo install -f wasm-pack
+RUN cargo install -f wasm-pack wasm-opt

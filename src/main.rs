@@ -1,5 +1,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 
+use std::{fs::File, io::Read};
+
 use egui::vec2;
 use res::app::EmulatorApp;
 
@@ -13,9 +15,15 @@ fn main() {
         ..Default::default()
     };
 
+    let rom = std::env::args().nth(1).map(|path| {
+        let mut data: Vec<u8> = Vec::new();
+        File::open(path).unwrap().read_to_end(&mut data).unwrap();
+        data
+    });
+
     eframe::run_native(
         "NES Emulator",
         native_options,
-        Box::new(|cc| Box::new(EmulatorApp::new(cc))),
+        Box::new(|cc| Box::new(EmulatorApp::new(cc, rom))),
     );
 }

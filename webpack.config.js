@@ -9,7 +9,9 @@ module.exports = {
   experiments: {
     asyncWebAssembly: true,
   },
-  mode: "production",
+  performance: {
+    hints: false,
+  },
   entry: {
     index: "./web/index.js",
   },

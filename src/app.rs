@@ -29,11 +29,16 @@ pub struct EmulatorApp {
 
 impl EmulatorApp {
     /// Called once before the first frame.
-    pub fn new(cc: &CreationContext<'_>) -> Self {
+    pub fn new(cc: &CreationContext<'_>, rom: Option<Vec<u8>>) -> Self {
         cc.egui_ctx.set_visuals(egui::Visuals::dark());
+        let loaded = rom.is_some();
         EmulatorApp {
-            emulator: System::default(),
-            loaded: false,
+            emulator: if let Some(rom) = rom {
+                System::with_ines_bytes(&rom).unwrap()
+            } else {
+                System::default()
+            },
+            loaded,
             texture: cc
                 .egui_ctx
                 .load_texture("Framebuffer", ColorImage::example()),
@@ -46,6 +51,8 @@ impl EmulatorApp {
             File::open(path).unwrap().read_to_end(&mut data).unwrap();
             self.emulator = System::with_ines_bytes(&data).unwrap();
         } else if let Some(bytes) = &drop.bytes {
+            #[cfg(target_arch = "wasm32")]
+            crate::wasm::save_rom_in_local_storage(bytes);
             self.emulator = System::with_ines_bytes(&*bytes).unwrap();
         }
         self.loaded = true;
