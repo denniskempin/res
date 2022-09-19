@@ -96,7 +96,7 @@ impl Ppu {
 
     pub fn get_palette_entry(&self, palette_id: usize, entry: usize) -> Rgba<u8> {
         if entry == 0 {
-            SYSTEM_PALLETE[self.read_ppu_memory(0x3F00 + (palette_id as u16 * 4)) as usize]
+            SYSTEM_PALLETE[self.read_ppu_memory(0x3F00) as usize]
         } else {
             let addr = 0x3F00 + (palette_id as u16 * 4) + entry as u16;
             SYSTEM_PALLETE[self.read_ppu_memory(addr) as usize]
@@ -112,6 +112,12 @@ impl Ppu {
     }
 
     pub fn write_ppu_memory(&mut self, addr: u16, value: u8) {
+        // Map memory addresses
+        let addr = match addr {
+            0x3F10 => 0x3F00,
+            addr => addr,
+        };
+
         match addr {
             0..=0x1FFF => self.cartridge.borrow_mut().chr[addr as usize] = value,
             0x2000..=0x3FFF => self.vram[(addr - 0x2000) as usize % self.vram.len()] = value,
@@ -210,21 +216,20 @@ impl Ppu {
     pub fn render_sprites(&self, target: &mut SubImage<&mut RgbaImage>) {
         for sprite_num in 0..64 {
             let oam_addr = sprite_num * 4;
-            let y = self.oam_data[oam_addr];
-            if y > 0xEF {
+            let sprite =
+                OamSprite::unpack_from_slice(&self.oam_data[oam_addr..oam_addr + 4]).unwrap();
+            if sprite.y > 0xEF {
                 continue;
             }
-            let idx = self.oam_data[oam_addr + 1];
-            let attr = self.oam_data[oam_addr + 2];
-            let x = self.oam_data[oam_addr + 3];
-            let palette_id = attr & 0b0000_0011;
-            if x < 31 * 8 && y < 29 * 8 {
+            if sprite.x < 31 * 8 && sprite.y < 29 * 8 {
                 self.render_tile(
-                    0,
-                    idx as usize,
-                    palette_id as usize + 4,
-                    &mut target.sub_image(x.into(), y.into(), 8, 8),
+                    self.control_register.sprite_pattern_addr as usize,
+                    sprite.index as usize,
+                    sprite.attributes.palette_id as usize + 4,
+                    &mut target.sub_image(sprite.x.into(), sprite.y.into(), 8, 8),
                     true,
+                    sprite.attributes.flip_h,
+                    sprite.attributes.flip_v,
                 );
             }
         }
@@ -243,11 +248,7 @@ impl Ppu {
     }
 
     pub fn render_nametable(&mut self, target: &mut SubImage<&mut RgbaImage>) {
-        let bank = if self.control_register.background_pattern_addr {
-            1
-        } else {
-            0
-        };
+        let bank = self.control_register.background_pattern_addr as usize;
 
         for y in 0..30_u32 {
             for x in 0..32 {
@@ -258,6 +259,8 @@ impl Ppu {
                     tile_num,
                     self.get_tile_attribute(x, y).into(),
                     &mut target.sub_image(x * 8, y * 8, 8, 8),
+                    false,
+                    false,
                     false,
                 )
             }
@@ -290,6 +293,8 @@ impl Ppu {
                     palette_id,
                     &mut target.sub_image((x * 8) as u32, (y * 8) as u32, 8, 8),
                     false,
+                    false,
+                    false,
                 );
             }
         }
@@ -302,12 +307,15 @@ impl Ppu {
         palette_id: usize,
         target: &mut SubImage<&mut RgbaImage>,
         is_sprite: bool,
+        flip_h: bool,
+        flip_v: bool,
     ) {
         let bank_addr = (0x1000 * bank) as u16;
         let tile_addr = bank_addr + (tile_num * 16) as u16;
         let tile: Vec<u8> = (tile_addr..=(tile_addr + 15))
             .map(|addr| self.read_ppu_memory(addr))
             .collect();
+
         for y in 0..8 {
             let mut lower = tile[y];
             let mut upper = tile[y + 8];
@@ -315,13 +323,35 @@ impl Ppu {
                 let value = (1 & upper) << 1 | (1 & lower);
                 if !(value == 0 && is_sprite) {
                     let rgb = self.get_palette_entry(palette_id, value as usize);
-                    target.put_pixel(x as u32, y as u32, rgb);
+                    let pixel_x = if flip_h { 8 - x } else { x };
+                    let pixel_y = if flip_v { 8 - y } else { y };
+                    target.put_pixel(pixel_x as u32, pixel_y as u32, rgb);
                 }
                 upper >>= 1;
                 lower >>= 1;
             }
         }
     }
+}
+
+#[derive(PackedStruct, Default, Debug)]
+#[packed_struct(bit_numbering = "msb0", size_bytes = "4")]
+pub struct OamSprite {
+    y: u8,
+    index: u8,
+    #[packed_field(size_bytes = "1")]
+    attributes: OamSpriteAttributes,
+    x: u8,
+}
+
+#[derive(PackedStruct, Default, Debug)]
+#[packed_struct(bit_numbering = "msb0", size_bytes = "1")]
+pub struct OamSpriteAttributes {
+    flip_v: bool,
+    flip_h: bool,
+    priority: bool,
+    #[packed_field(bits = "6..=7")]
+    palette_id: u8,
 }
 
 #[derive(Default, Encode, Decode)]
@@ -362,7 +392,7 @@ pub struct ControlRegister {
     background_pattern_addr: bool,
     sprite_pattern_addr: bool,
     vram_add_increment: bool,
-    #[packed_field(bits = "6..7")]
+    #[packed_field(bits = "6..=7")]
     nametable: u8,
 }
 

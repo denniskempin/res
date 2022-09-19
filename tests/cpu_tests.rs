@@ -44,7 +44,7 @@ pub fn test_nestest_snapshot() {
     }
 
     let snapshot = system.snapshot();
-    let mut resumed_system = System::with_snapshot(&snapshot).unwrap();
+    let resumed_system = System::with_snapshot(&snapshot).unwrap();
     assert_eq!(system.trace().unwrap(), resumed_system.trace().unwrap());
 }
 
