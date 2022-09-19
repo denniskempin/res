@@ -1,13 +1,12 @@
 use anyhow::Result;
-use bitflags::bitflags;
 use image::GenericImage;
 
 use image::ImageBuffer;
 use image::Rgba;
 use image::RgbaImage;
 use image::SubImage;
+use packed_struct::prelude::*;
 use std::cell::RefCell;
-
 use std::rc::Rc;
 
 use super::cartridge::Cartridge;
@@ -74,18 +73,15 @@ impl Ppu {
             self.scanline += 1;
 
             if self.scanline == 241 {
-                self.status_register.insert(StatusRegister::VBLANK_STARTED);
+                self.status_register.vblank_started = true;
                 self.vblank = true;
-                if self
-                    .control_register
-                    .contains(ControlRegister::GENERATE_NMI)
-                {
+                if self.control_register.generate_nmi {
                     self.nmi_interrupt = true;
                 }
             }
 
             if self.scanline == 261 {
-                self.status_register.remove(StatusRegister::VBLANK_STARTED);
+                self.status_register.vblank_started = false;
                 self.vblank = false;
             }
 
@@ -130,10 +126,7 @@ impl Ppu {
 
     fn increment_address_register(&mut self) -> u16 {
         let addr = self.address_register.address();
-        let inc = if self
-            .control_register
-            .contains(ControlRegister::VRAM_ADD_INCREMENT)
-        {
+        let inc = if self.control_register.vram_add_increment {
             32
         } else {
             1
@@ -155,8 +148,8 @@ impl Ppu {
     }
 
     pub fn read_status_register(&mut self) -> u8 {
-        let status = self.status_register.bits;
-        self.status_register.remove(StatusRegister::VBLANK_STARTED);
+        let status = self.status_register.pack().unwrap()[0];
+        self.status_register.vblank_started = false;
         status
     }
 
@@ -165,8 +158,8 @@ impl Ppu {
             OAM_ADDR => self.oam_addr,
             OAM_DATA => self.oam_data[self.oam_addr as usize],
             PPU_SCROLL => self.scroll,
-            CONTROL_REGISTER_ADDR => self.control_register.bits,
-            STATUS_REGISTER_ADDR => self.status_register.bits,
+            CONTROL_REGISTER_ADDR => self.control_register.pack().unwrap()[0],
+            STATUS_REGISTER_ADDR => self.status_register.pack().unwrap()[0],
             _ => {
                 println!("Warning: Invalid peek/read from PPU at {addr:04X}");
                 0
@@ -194,7 +187,7 @@ impl Ppu {
             OAM_DATA => self.oam_data[self.oam_addr as usize] = value,
             PPU_SCROLL => self.scroll = value,
             CONTROL_REGISTER_ADDR => {
-                self.control_register = ControlRegister::from_bits_truncate(value)
+                self.control_register = ControlRegister::unpack(&[value]).unwrap();
             }
             ADDRESS_REGISTER_ADDR => self.address_register.write(value),
             DATA_REGISTER_ADDR => self.write_data_register(value),
@@ -247,10 +240,7 @@ impl Ppu {
     }
 
     pub fn render_nametable(&mut self, target: &mut SubImage<&mut RgbaImage>) {
-        let bank = if self
-            .control_register
-            .contains(ControlRegister::BACKROUND_PATTERN_ADDR)
-        {
+        let bank = if self.control_register.background_pattern_addr {
             1
         } else {
             0
@@ -360,33 +350,27 @@ impl AddressRegister {
     }
 }
 
-bitflags! {
-    #[derive(Default)]
-    pub struct ControlRegister: u8 {
-       const NAMETABLE1              = 0b00000001;
-       const NAMETABLE2              = 0b00000010;
-       const VRAM_ADD_INCREMENT      = 0b00000100;
-       const SPRITE_PATTERN_ADDR     = 0b00001000;
-       const BACKROUND_PATTERN_ADDR  = 0b00010000;
-       const SPRITE_SIZE             = 0b00100000;
-       const MASTER_SLAVE_SELECT     = 0b01000000;
-       const GENERATE_NMI            = 0b10000000;
-   }
+#[derive(PackedStruct, Debug, Default, Clone, Copy, PartialEq)]
+#[packed_struct(bit_numbering = "msb0", size_bytes = "1")]
+pub struct ControlRegister {
+    generate_nmi: bool,
+    master_slave_select: bool,
+    sprite_size: bool,
+    background_pattern_addr: bool,
+    sprite_pattern_addr: bool,
+    vram_add_increment: bool,
+    #[packed_field(bits = "6..7")]
+    nametable: u8,
 }
 
-bitflags! {
-    #[derive(Default)]
-    pub struct StatusRegister: u8 {
-        const NOTUSED          = 0b00000001;
-        const NOTUSED2         = 0b00000010;
-        const NOTUSED3         = 0b00000100;
-        const NOTUSED4         = 0b00001000;
-        const NOTUSED5         = 0b00010000;
-        const SPRITE_OVERFLOW  = 0b00100000;
-        const SPRITE_ZERO_HIT  = 0b01000000;
-        const VBLANK_STARTED   = 0b10000000;
-    }
+#[derive(PackedStruct, Debug, Default, Clone, Copy, PartialEq)]
+#[packed_struct(bit_numbering = "msb0", size_bytes = "1")]
+pub struct StatusRegister {
+    vblank_started: bool,
+    sprite_zero_hit: bool,
+    sprite_overflow: bool,
 }
+
 pub static SYSTEM_PALLETE: [Rgba<u8>; 64] = [
     Rgba([0x80, 0x80, 0x80, 0xFF]),
     Rgba([0x00, 0x3D, 0xA6, 0xFF]),

@@ -10,6 +10,7 @@ use super::cartridge::Cartridge;
 use super::joypad::Joypad;
 use super::ppu::Ppu;
 use anyhow::Result;
+use packed_struct::prelude::*;
 
 ////////////////////////////////////////////////////////////////////////////////
 // CpuBus
@@ -146,41 +147,26 @@ impl CpuBus {
 ////////////////////////////////////////////////////////////////////////////////
 // StatusFlags
 
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
+#[derive(PackedStruct, Debug, Default, Clone, Copy, PartialEq)]
+#[packed_struct(bit_numbering = "msb0")]
 pub struct StatusFlags {
-    carry: bool,
-    zero: bool,
-    interrupt: bool,
-    decimal: bool,
-    break_flag: bool,
-    unused: bool,
-    overflow: bool,
     negative: bool,
+    overflow: bool,
+    unused: bool,
+    break_flag: bool,
+    decimal: bool,
+    interrupt: bool,
+    zero: bool,
+    carry: bool,
 }
 
 impl StatusFlags {
     pub fn bits(&self) -> u8 {
-        (self.carry as u8)
-            | (self.zero as u8) << 1
-            | (self.interrupt as u8) << 2
-            | (self.decimal as u8) << 3
-            | (self.break_flag as u8) << 4
-            | (self.unused as u8) << 5
-            | (self.overflow as u8) << 6
-            | (self.negative as u8) << 7
+        self.pack().unwrap()[0]
     }
 
     pub fn from_bits(bits: u8) -> StatusFlags {
-        StatusFlags {
-            carry: bits & 0b0000_0001 > 0,
-            zero: bits & 0b0000_0010 > 0,
-            interrupt: bits & 0b0000_0100 > 0,
-            decimal: bits & 0b0000_1000 > 0,
-            break_flag: bits & 0b0001_0000 > 0,
-            unused: bits & 0b0010_0000 > 0,
-            overflow: bits & 0b0100_0000 > 0,
-            negative: bits & 0b1000_0000 > 0,
-        }
+        StatusFlags::unpack(&[bits]).unwrap()
     }
 }
 

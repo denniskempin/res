@@ -1,6 +1,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use std::{fs::File, io::Read};
+use std::fs::File;
+use std::io::Read;
 
 use egui::vec2;
 use res::app::EmulatorApp;
