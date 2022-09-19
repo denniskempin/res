@@ -1,3 +1,5 @@
+use bincode::{Decode, Encode};
+
 pub enum JoypadButton {
     ButtonA = 0,
     ButtonB = 1,
@@ -9,7 +11,7 @@ pub enum JoypadButton {
     Right = 7,
 }
 
-#[derive(Default)]
+#[derive(Default, Encode, Decode)]
 pub struct Joypad {
     strobe: bool,
     index: usize,

@@ -10,10 +10,11 @@ use self::cpu::Operation;
 use self::trace::Trace;
 use anyhow::Result;
 
+use bincode::{Decode, Encode};
 use std::fs;
 use std::path::Path;
 
-#[derive(Default)]
+#[derive(Default, Encode, Decode)]
 pub struct System {
     pub cpu: Cpu,
     pub last_apu_cycle: u32,
@@ -22,6 +23,10 @@ pub struct System {
 impl System {
     pub fn tick(&mut self) -> Result<bool> {
         self.cpu.execute_one()
+    }
+
+    pub fn snapshot(&self) -> Vec<u8> {
+        bincode::encode_to_vec(self, bincode::config::standard()).unwrap()
     }
 
     pub fn trace(&self) -> Result<Trace> {
@@ -84,6 +89,10 @@ impl System {
         Ok(system)
     }
 
+    pub fn with_snapshot(snapshot: &[u8]) -> Result<System> {
+        Ok(bincode::decode_from_slice(snapshot, bincode::config::standard())?.0)
+    }
+
     pub fn execute_until_halt(&mut self) -> Result<()> {
         while self.cpu.execute_one()? {
             println!("{:?}", self.trace());
@@ -102,12 +111,14 @@ impl System {
         }
         Ok(())
     }
+
     pub fn execute_frames(&mut self, num_frames: usize) -> Result<()> {
         for _ in 0..num_frames {
             self.execute_one_frame()?;
         }
         Ok(())
     }
+
     pub fn load_program(&mut self, program: &[u8]) -> Result<()> {
         self.cpu.bus.cartridge.borrow_mut().load_program(program);
         self.reset()

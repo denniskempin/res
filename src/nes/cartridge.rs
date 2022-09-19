@@ -1,8 +1,11 @@
 use anyhow::anyhow;
 use anyhow::Result;
+use bincode::Decode;
+use bincode::Encode;
 
-#[derive(Default)]
-pub struct Cartridge {
+#[derive(Default, Encode, Decode)]
+pub struct Cartridge
+{
     pub prg: Vec<u8>,
     pub prg_ram: Vec<u8>,
     pub chr: Vec<u8>,

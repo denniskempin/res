@@ -1,4 +1,6 @@
 use anyhow::Result;
+use bincode::Decode;
+use bincode::Encode;
 use image::GenericImage;
 
 use image::ImageBuffer;
@@ -19,6 +21,7 @@ const PPU_SCROLL: u16 = 0x2005;
 const ADDRESS_REGISTER_ADDR: u16 = 0x2006;
 const DATA_REGISTER_ADDR: u16 = 0x2007;
 
+#[derive(Encode, Decode)]
 pub struct Ppu {
     pub cartridge: Rc<RefCell<Cartridge>>,
     pub palette_table: [u8; 32],
@@ -321,7 +324,7 @@ impl Ppu {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Encode, Decode)]
 pub struct AddressRegister {
     value: [u8; 2],
     write_high: bool,
@@ -350,7 +353,7 @@ impl AddressRegister {
     }
 }
 
-#[derive(PackedStruct, Debug, Default, Clone, Copy, PartialEq)]
+#[derive(PackedStruct, Encode, Decode, Debug, Default, Clone, Copy, PartialEq)]
 #[packed_struct(bit_numbering = "msb0", size_bytes = "1")]
 pub struct ControlRegister {
     generate_nmi: bool,
@@ -363,7 +366,7 @@ pub struct ControlRegister {
     nametable: u8,
 }
 
-#[derive(PackedStruct, Debug, Default, Clone, Copy, PartialEq)]
+#[derive(PackedStruct, Encode, Decode, Debug, Default, Clone, Copy, PartialEq)]
 #[packed_struct(bit_numbering = "msb0", size_bytes = "1")]
 pub struct StatusRegister {
     vblank_started: bool,

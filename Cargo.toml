@@ -17,6 +17,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 anyhow = "1.0"
 base64 = "0.13"
+bincode =  { version = "2.0.0-rc.1", features = ["derive"] }
 eframe = "0.18"
 egui = "0.18"
 getrandom = { version = "0.2", features = ["js"] }

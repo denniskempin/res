@@ -1,4 +1,4 @@
-#[derive(Default)]
+#[derive(Default, bincode::Encode, bincode::Decode)]
 pub struct Apu {}
 
 impl Apu {

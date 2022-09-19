@@ -118,11 +118,6 @@ impl eframe::App for EmulatorApp {
             });
         });
 
-        // Render debug display
-        egui::SidePanel::right("debug_panel")
-            .resizable(false)
-            .show(ctx, |_ui| {});
-
         // Render emulator display
         egui::CentralPanel::default().show(ctx, |ui| {
             self.render_display(ui);

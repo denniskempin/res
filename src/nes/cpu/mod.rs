@@ -3,6 +3,7 @@ mod operations;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use bincode::{Decode, Encode};
 pub use operations::Operation;
 
 use super::apu::Apu;
@@ -15,6 +16,7 @@ use packed_struct::prelude::*;
 ////////////////////////////////////////////////////////////////////////////////
 // CpuBus
 
+#[derive(Encode, Decode)]
 pub struct CpuBus {
     pub ram: [u8; 0x2000],
     pub cartridge: Rc<RefCell<Cartridge>>,
@@ -147,7 +149,7 @@ impl CpuBus {
 ////////////////////////////////////////////////////////////////////////////////
 // StatusFlags
 
-#[derive(PackedStruct, Debug, Default, Clone, Copy, PartialEq)]
+#[derive(PackedStruct, Encode, Decode, Debug, Default, Clone, Copy, PartialEq)]
 #[packed_struct(bit_numbering = "msb0")]
 pub struct StatusFlags {
     negative: bool,
@@ -182,6 +184,7 @@ enum InterruptVector {
 ////////////////////////////////////////////////////////////////////////////////
 // Cpu
 
+#[derive(Encode, Decode)]
 pub struct Cpu {
     pub a: u8,
     pub x: u8,

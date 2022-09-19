@@ -36,6 +36,18 @@ pub fn test_nestest() {
     compare_to_log(system, "tests/cpu/nestest.log", 0);
 }
 
+#[test]
+pub fn test_nestest_snapshot() {
+    let mut system = System::with_ines(Path::new("tests/cpu/nestest.nes")).unwrap();
+    for _ in 0..1000 {
+        system.cpu.execute_one().unwrap();
+    }
+
+    let snapshot = system.snapshot();
+    let mut resumed_system = System::with_snapshot(&snapshot).unwrap();
+    assert_eq!(system.trace().unwrap(), resumed_system.trace().unwrap());
+}
+
 pub fn compare_to_log(mut system: System, log_file: &str, goal_count: usize) {
     let log = io::BufReader::new(File::open(log_file).unwrap());
     let mut previous_actual = Trace::default();
