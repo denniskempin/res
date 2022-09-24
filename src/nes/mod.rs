@@ -10,7 +10,8 @@ use self::cpu::Operation;
 use self::trace::Trace;
 use anyhow::Result;
 
-use bincode::{Decode, Encode};
+use bincode::Decode;
+use bincode::Encode;
 use std::fs;
 use std::path::Path;
 

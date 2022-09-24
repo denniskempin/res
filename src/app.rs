@@ -13,10 +13,6 @@ use egui::InputState;
 use egui::Key;
 use egui::Sense;
 use egui::TextureHandle;
-use image::GenericImage;
-use image::ImageBuffer;
-
-use image::RgbaImage;
 
 use crate::nes::joypad::JoypadButton;
 use crate::nes::System;
@@ -68,20 +64,22 @@ impl EmulatorApp {
     }
 
     fn update_display(&mut self) {
-        let mut image: RgbaImage = ImageBuffer::new(32 * 8, 30 * 8);
+        /*let mut image: RgbaImage = ImageBuffer::new(32 * 8, 30 * 8);
         self.emulator
             .cpu
             .bus
             .ppu
-            .render_nametable(&mut image.sub_image(0, 0, 32 * 8, 30 * 8));
+            .debug_render_nametable(&mut image.sub_image(0, 0, 32 * 8, 30 * 8));
         self.emulator
             .cpu
             .bus
             .ppu
-            .render_sprites(&mut image.sub_image(0, 0, 32 * 8, 30 * 8));
-        let size = [image.width() as usize, image.height() as usize];
-        let egui_image =
-            ColorImage::from_rgba_unmultiplied(size, image.as_flat_samples().as_slice());
+            .debug_render_sprites(&mut image.sub_image(0, 0, 32 * 8, 30 * 8));*/
+        let image = &self.emulator.cpu.bus.ppu.framebuffer.image;
+        let egui_image = ColorImage::from_rgba_unmultiplied(
+            [image.width() as usize, image.height() as usize],
+            image.as_flat_samples().as_slice(),
+        );
         self.texture.set(egui_image);
     }
 

@@ -1,4 +1,5 @@
-use bincode::{Decode, Encode};
+use bincode::Decode;
+use bincode::Encode;
 
 pub enum JoypadButton {
     ButtonA = 0,

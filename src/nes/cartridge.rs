@@ -4,8 +4,7 @@ use bincode::Decode;
 use bincode::Encode;
 
 #[derive(Default, Encode, Decode)]
-pub struct Cartridge
-{
+pub struct Cartridge {
     pub prg: Vec<u8>,
     pub prg_ram: Vec<u8>,
     pub chr: Vec<u8>,

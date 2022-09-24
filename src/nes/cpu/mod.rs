@@ -3,7 +3,8 @@ mod operations;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use bincode::{Decode, Encode};
+use bincode::Decode;
+use bincode::Encode;
 pub use operations::Operation;
 
 use super::apu::Apu;

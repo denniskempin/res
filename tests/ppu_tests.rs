@@ -12,7 +12,7 @@ pub fn test_nestest_pattern_table() {
     let mut system = System::with_ines(Path::new("tests/cpu/nestest.nes")).unwrap();
     system.execute_frames(60).unwrap();
     compare_to_golden(
-        system.cpu.bus.ppu.render_pattern_table(0).unwrap(),
+        system.cpu.bus.ppu.debug_render_pattern_table(0).unwrap(),
         "test_nestest_pattern_table",
     );
 }
@@ -40,7 +40,7 @@ pub fn test_alter_ego_pattern_table() {
     let mut system = System::with_ines(Path::new("tests/ppu/alter_ego.nes")).unwrap();
     system.execute_frames(60).unwrap();
     compare_to_golden(
-        system.cpu.bus.ppu.render_pattern_table(0).unwrap(),
+        system.cpu.bus.ppu.debug_render_pattern_table(0).unwrap(),
         "test_alter_ego_pattern_table",
     );
 }
@@ -60,7 +60,7 @@ pub fn test_donkey_kong_pattern_table() {
     let mut system = System::with_ines(Path::new("tests/ppu/donkey_kong.nes")).unwrap();
     system.execute_frames(60).unwrap();
     compare_to_golden(
-        system.cpu.bus.ppu.render_pattern_table(0).unwrap(),
+        system.cpu.bus.ppu.debug_render_pattern_table(0).unwrap(),
         "test_donkey_kong_pattern_table",
     );
 }
@@ -82,6 +82,6 @@ fn render_nametable(system: &mut System) -> ImageBuffer<image::Rgba<u8>, Vec<u8>
         .cpu
         .bus
         .ppu
-        .render_nametable(&mut actual.sub_image(0, 0, 32 * 8, 30 * 8));
+        .debug_render_nametable(&mut actual.sub_image(0, 0, 32 * 8, 30 * 8));
     actual
 }

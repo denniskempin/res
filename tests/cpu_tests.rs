@@ -48,6 +48,18 @@ pub fn test_nestest_snapshot() {
     assert_eq!(system.trace().unwrap(), resumed_system.trace().unwrap());
 }
 
+#[test]
+pub fn test_snapshot_size() {
+    let mut system = System::with_ines(Path::new("tests/cpu/nestest.nes")).unwrap();
+    system.cpu.execute_one().unwrap();
+    let snapshot = system.snapshot();
+    assert!(
+        snapshot.len() < 1024 * 512,
+        "Snapshot is too large: {} kB",
+        snapshot.len() / 1024
+    );
+}
+
 pub fn compare_to_log(mut system: System, log_file: &str, goal_count: usize) {
     let log = io::BufReader::new(File::open(log_file).unwrap());
     let mut previous_actual = Trace::default();
