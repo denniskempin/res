@@ -1,9 +1,10 @@
-use res::nes::trace::Trace;
-use res::nes::System;
 use std::fs::File;
 use std::io::BufRead;
 use std::io::{self};
 use std::path::Path;
+
+use res::nes::trace::Trace;
+use res::nes::System;
 
 #[test]
 pub fn test_basic_program() {

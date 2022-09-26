@@ -3,16 +3,16 @@ mod operations;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use anyhow::Result;
 use bincode::Decode;
 use bincode::Encode;
 pub use operations::Operation;
+use packed_struct::prelude::*;
 
 use super::apu::Apu;
 use super::cartridge::Cartridge;
 use super::joypad::Joypad;
 use super::ppu::Ppu;
-use anyhow::Result;
-use packed_struct::prelude::*;
 
 ////////////////////////////////////////////////////////////////////////////////
 // CpuBus

@@ -3,12 +3,10 @@ use std::io::Read;
 
 use eframe::CreationContext;
 use eframe::Frame;
-
 use egui::ColorImage;
 use egui::Context;
 use egui::DroppedFile;
 use egui::Image;
-
 use egui::InputState;
 use egui::Key;
 use egui::Sense;

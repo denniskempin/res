@@ -1,8 +1,9 @@
+use std::fmt::Display;
+use std::num::ParseIntError;
+
 use anyhow::anyhow;
 use anyhow::Result;
 use regex::Regex;
-use std::fmt::Display;
-use std::num::ParseIntError;
 
 use super::cpu::StatusFlags;
 
@@ -100,9 +101,8 @@ impl Trace {
 
 #[cfg(test)]
 mod test {
-    use crate::nes::cpu::StatusFlags;
-
     use super::Trace;
+    use crate::nes::cpu::StatusFlags;
 
     #[test]
     pub fn test_parse_fmt_trace() {

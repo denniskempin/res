@@ -4,16 +4,18 @@ pub mod cpu;
 pub mod joypad;
 pub mod ppu;
 pub mod trace;
+mod util;
+
+use std::fs;
+use std::path::Path;
+
+use anyhow::Result;
+use bincode::Decode;
+use bincode::Encode;
 
 use self::cpu::Cpu;
 use self::cpu::Operation;
 use self::trace::Trace;
-use anyhow::Result;
-
-use bincode::Decode;
-use bincode::Encode;
-use std::fs;
-use std::path::Path;
 
 #[derive(Default, Encode, Decode)]
 pub struct System {
