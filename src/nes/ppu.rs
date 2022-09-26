@@ -10,7 +10,6 @@ use image::SubImage;
 use packed_struct::prelude::*;
 use std::cell::RefCell;
 
-use std::collections::VecDeque;
 use std::rc::Rc;
 
 use super::cartridge::Cartridge;
@@ -170,9 +169,9 @@ impl Ppu {
         }
     }
 
-    fn collect_sprites_on_scanline(&self, scanline: usize) -> Vec<Sprite> {
+    fn collect_sprites_on_scanline(&self, scanline: usize) -> impl Iterator<Item = Sprite> + '_ {
         (0..64)
-            .filter_map(|i| {
+            .filter_map(move |i| {
                 let sprite = Sprite::new(self, i);
                 let delta_y = scanline as i32 - sprite.data.y as i32;
                 if (0..8).contains(&delta_y) {
@@ -181,7 +180,7 @@ impl Ppu {
                     None
                 }
             })
-            .collect()
+            .rev()
     }
 
     pub fn get_nametable_entry(&self, coarse_x: usize, coarse_y: usize) -> usize {
@@ -194,42 +193,39 @@ impl Ppu {
         let coarse_y = screen_y / 8;
         let fine_y = screen_y % 8;
 
-        let mut sprites = self.collect_sprites_on_scanline(self.scanline);
-        sprites.sort_by(|a, b| b.data.x.cmp(&a.data.x));
+        // Temporary buffer of pixels as (color, palette_id) pairs.
+        let mut pixels = [(0_u8, 0_u8); 32 * 8];
 
-        let mut active_sprite_pixels: VecDeque<u8> = VecDeque::new();
-        let mut active_sprite_palette_id: u8 = 0;
-
+        // Write background pixels to buffer
         for coarse_x in 0..32 {
             let background = NametableEntry::new(self, coarse_x, coarse_y);
-
-            for (fine_x, bg_pixel) in background.pattern.row_pixels(self, fine_y).enumerate() {
+            for (fine_x, pixel) in background.pattern.row_pixels(self, fine_y).enumerate() {
                 let screen_x = coarse_x * 8 + fine_x as u32;
-
-                // Pick the next active sprite
-                if let Some(next_sprite) = sprites.last() {
-                    if next_sprite.data.x as u32 == screen_x {
-                        let sprite_row = screen_y - next_sprite.data.y as u32;
-                        active_sprite_pixels = next_sprite.row_pixels(self, sprite_row).collect();
-                        active_sprite_palette_id = next_sprite.data.attributes.palette_id;
-                        sprites.pop();
-                    }
-                }
-
-                // Decide wether to draw the sprite or background
-                let sprite_pixel = active_sprite_pixels.pop_front().unwrap_or(0);
-                let (final_pixel, palette_id) = if sprite_pixel != 0 {
-                    (sprite_pixel, active_sprite_palette_id + 4)
-                } else {
-                    (bg_pixel, background.palette_id)
-                };
-                let rgb = self.get_palette_entry(palette_id as usize, final_pixel as usize);
-
-                // Draw the final pixel
-                self.framebuffer
-                    .image
-                    .put_pixel(screen_x as u32, screen_y as u32, rgb);
+                pixels[screen_x as usize] = (pixel, background.palette_id);
             }
+        }
+
+        // Add sprite pixels
+        for sprite in self.collect_sprites_on_scanline(self.scanline) {
+            let sprite_row = screen_y - sprite.data.y as u32;
+            for (fine_x, pixel) in sprite.row_pixels(self, sprite_row).enumerate() {
+                let screen_x = sprite.data.x as u32 + fine_x as u32;
+                if screen_x >= 32 * 8 {
+                    break;
+                }
+                let (bg_pixel, _) = pixels[screen_x as usize];
+                if bg_pixel == 0 || (pixel > 0 && sprite.data.attributes.priority) {
+                    pixels[screen_x as usize] = (pixel, sprite.data.attributes.palette_id + 4);
+                }
+            }
+        }
+
+        // Convert into RGBA and write into framebuffer
+        for (screen_x, (color, palette)) in pixels.into_iter().enumerate() {
+            let rgb = self.get_palette_entry(palette as usize, color as usize);
+            self.framebuffer
+                .image
+                .put_pixel(screen_x as u32, screen_y as u32, rgb);
         }
     }
 
