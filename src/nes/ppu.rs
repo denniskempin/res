@@ -10,6 +10,7 @@ use image::SubImage;
 use packed_struct::prelude::*;
 use std::cell::RefCell;
 
+use std::collections::VecDeque;
 use std::rc::Rc;
 
 use super::cartridge::Cartridge;
@@ -169,13 +170,11 @@ impl Ppu {
         }
     }
 
-    fn collect_sprites_on_scanline(&self, scanline: usize) -> Vec<OamSprite> {
+    fn collect_sprites_on_scanline(&self, scanline: usize) -> Vec<Sprite> {
         (0..64)
             .filter_map(|i| {
-                let oam_addr = i * 4;
-                let sprite =
-                    OamSprite::unpack_from_slice(&self.oam_data[oam_addr..oam_addr + 4]).unwrap();
-                let delta_y = scanline as i32 - sprite.y as i32;
+                let sprite = Sprite::new(self, i);
+                let delta_y = scanline as i32 - sprite.data.y as i32;
                 if (0..8).contains(&delta_y) {
                     Some(sprite)
                 } else {
@@ -190,81 +189,46 @@ impl Ppu {
         self.read_ppu_memory(addr as u16) as usize
     }
 
-    pub fn get_tile_row(
-        &self,
-        bank_id: usize,
-        tile_id: usize,
-        mut fine_y: usize,
-        flip_h: bool,
-        flip_v: bool,
-    ) -> TileRow {
-        let bank_addr = (0x1000 * bank_id) as u16;
-        let tile_addr = bank_addr + (tile_id * 16) as u16;
-        if flip_v {
-            fine_y = 7 - fine_y;
-        }
-        let line_addr = tile_addr + fine_y as u16;
-
-        let mut low = self.read_ppu_memory(line_addr);
-        let mut high = self.read_ppu_memory(line_addr + 8);
-
-        if flip_h {
-            low = reverse_u8(low);
-            high = reverse_u8(high);
-        }
-        TileRow { low, high }
-    }
-
     pub fn render_scanline(&mut self) {
-        let y = self.scanline;
-        let coarse_y = y / 8;
-        let fine_y = y % 8;
+        let screen_y = self.scanline as u32;
+        let coarse_y = screen_y / 8;
+        let fine_y = screen_y % 8;
 
-        let bg_bank = self.control_register.background_pattern_addr as usize;
-        let _sprite_bank = self.control_register.sprite_pattern_addr as usize;
+        let mut sprites = self.collect_sprites_on_scanline(self.scanline);
+        sprites.sort_by(|a, b| b.data.x.cmp(&a.data.x));
 
-        let mut sprites = self.collect_sprites_on_scanline(y);
-        sprites.sort_by(|a, b| b.x.cmp(&a.x));
-
-        let mut sprite_pixels = TileRow::default();
-        let mut sprite_palette_id: u8 = 0;
+        let mut active_sprite_pixels: VecDeque<u8> = VecDeque::new();
+        let mut active_sprite_palette_id: u8 = 0;
 
         for coarse_x in 0..32 {
-            let bg_tile_id = self.get_nametable_entry(coarse_x, coarse_y);
-            let bg_palette_id = self.get_nametable_attribute(coarse_x, coarse_y);
+            let background = NametableEntry::new(self, coarse_x, coarse_y);
 
-            for (fine_x, bg_color_id) in &mut self
-                .get_tile_row(bg_bank, bg_tile_id, fine_y, false, false)
-                .pixels()
-            {
-                let x = coarse_x * 8 + fine_x;
+            for (fine_x, bg_pixel) in background.pattern.row_pixels(self, fine_y).enumerate() {
+                let screen_x = coarse_x * 8 + fine_x as u32;
 
+                // Pick the next active sprite
                 if let Some(next_sprite) = sprites.last() {
-                    if next_sprite.x as usize == x {
-                        let sprite_y_offset = y - next_sprite.y as usize;
-
-                        sprite_pixels = self.get_tile_row(
-                            self.control_register.sprite_pattern_addr as usize,
-                            next_sprite.index as usize,
-                            sprite_y_offset as usize,
-                            next_sprite.attributes.flip_h,
-                            next_sprite.attributes.flip_v,
-                        );
-                        sprite_palette_id = next_sprite.attributes.palette_id;
+                    if next_sprite.data.x as u32 == screen_x {
+                        let sprite_row = screen_y - next_sprite.data.y as u32;
+                        active_sprite_pixels = next_sprite.row_pixels(self, sprite_row).collect();
+                        active_sprite_palette_id = next_sprite.data.attributes.palette_id;
                         sprites.pop();
                     }
                 }
 
-                let sprite_color_id = sprite_pixels.next_pixel();
-                let (final_color_id, final_palette_id) = if sprite_color_id != 0 {
-                    (sprite_color_id, sprite_palette_id + 4)
+                // Decide wether to draw the sprite or background
+                let sprite_pixel = active_sprite_pixels.pop_front().unwrap_or(0);
+                let (final_pixel, palette_id) = if sprite_pixel != 0 {
+                    (sprite_pixel, active_sprite_palette_id + 4)
                 } else {
-                    (bg_color_id, bg_palette_id)
+                    (bg_pixel, background.palette_id)
                 };
+                let rgb = self.get_palette_entry(palette_id as usize, final_pixel as usize);
 
-                let rgb =
-                    self.get_palette_entry(final_palette_id as usize, final_color_id as usize);
-                self.framebuffer.image.put_pixel(x as u32, y as u32, rgb);
+                // Draw the final pixel
+                self.framebuffer
+                    .image
+                    .put_pixel(screen_x as u32, screen_y as u32, rgb);
             }
         }
     }
@@ -454,16 +418,16 @@ impl Ppu {
 
     pub fn debug_render_tile_bank(
         &self,
-        bank: usize,
+        bank_id: usize,
         palette_id: usize,
         target: &mut RgbaSubImage,
     ) {
         for y in 0..16 {
             for x in 0..16 {
-                let tile_num = (y * 16) + x;
+                let pattern_id = (y * 16) + x;
                 self.debug_render_tile(
-                    bank,
-                    tile_num,
+                    bank_id,
+                    pattern_id,
                     palette_id,
                     &mut target.sub_image((x * 8) as u32, (y * 8) as u32, 8, 8),
                     false,
@@ -509,23 +473,86 @@ impl Ppu {
     }
 }
 
-#[derive(Default)]
-pub struct TileRow {
-    pub low: u8,
-    pub high: u8,
+pub struct NametableEntry {
+    pattern: Pattern,
+    palette_id: u8,
 }
 
-impl TileRow {
-    pub fn next_pixel(&mut self) -> u8 {
-        let low_bit = self.low & 0b1000_0000 != 0;
-        let high_bit = self.high & 0b1000_0000 != 0;
-        self.low <<= 1;
-        self.high <<= 1;
-        (high_bit as u8) << 1 | (low_bit as u8)
+impl NametableEntry {
+    pub fn new(ppu: &Ppu, coarse_x: u32, coarse_y: u32) -> NametableEntry {
+        let addr = 0x2000 + coarse_y * 0x20 + coarse_x;
+        let nametable_value = ppu.read_ppu_memory(addr as u16);
+
+        let attr_table_idx = coarse_y / 4 * 8 + coarse_x / 4;
+        let attr_byte = ppu.read_ppu_memory(0x23C0 + attr_table_idx as u16);
+        let attribute = match (coarse_x % 4 / 2, coarse_y % 4 / 2) {
+            (0, 0) => attr_byte & 0b11,
+            (1, 0) => (attr_byte >> 2) & 0b11,
+            (0, 1) => (attr_byte >> 4) & 0b11,
+            (1, 1) => (attr_byte >> 6) & 0b11,
+            (_, _) => panic!("should not happen"),
+        };
+
+        NametableEntry {
+            pattern: Pattern::new(
+                ppu.control_register.background_pattern_addr as u8,
+                nametable_value,
+            ),
+            palette_id: attribute,
+        }
+    }
+}
+
+pub struct Sprite {
+    data: OamSprite,
+    pattern: Pattern,
+}
+
+impl Sprite {
+    pub fn new(ppu: &Ppu, sprite_id: usize) -> Sprite {
+        let sprite_addr = sprite_id * 4;
+        let data =
+            OamSprite::unpack_from_slice(&ppu.oam_data[sprite_addr..sprite_addr + 4]).unwrap();
+        Sprite {
+            data,
+            pattern: Pattern::new(ppu.control_register.sprite_pattern_addr as u8, data.index),
+        }
     }
 
-    pub fn pixels(&mut self) -> impl Iterator<Item = (usize, u8)> + '_ {
-        (0..8).map(move |fine_x| (fine_x, self.next_pixel()))
+    pub fn row_pixels(&self, ppu: &Ppu, mut y: u32) -> impl Iterator<Item = u8> {
+        if self.data.attributes.flip_v {
+            y = 7 - y;
+        }
+        let mut row: Vec<u8> = self.pattern.row_pixels(ppu, y).collect();
+        if self.data.attributes.flip_h {
+            row.reverse();
+        }
+        row.into_iter()
+    }
+}
+
+pub struct Pattern {
+    addr: u16,
+}
+
+impl Pattern {
+    pub fn new(bank_id: u8, pattern_id: u8) -> Pattern {
+        Pattern {
+            addr: (0x1000 * bank_id as u16) + (pattern_id as u16 * 16),
+        }
+    }
+
+    pub fn row_pixels(&self, ppu: &Ppu, y: u32) -> impl Iterator<Item = u8> + '_ {
+        let mut low = ppu.read_ppu_memory(self.addr + y as u16);
+        let mut high = ppu.read_ppu_memory(self.addr + y as u16 + 8);
+
+        (0..8).map(move |_| {
+            let low_bit = low & 0b1000_0000 > 0;
+            let high_bit = high & 0b1000_0000 > 0;
+            low <<= 1;
+            high <<= 1;
+            (high_bit as u8) << 1 | (low_bit as u8)
+        })
     }
 }
 
