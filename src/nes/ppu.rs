@@ -91,6 +91,7 @@ impl Ppu {
 
             if self.scanline == 261 {
                 self.status_register.vblank_started = false;
+                self.status_register.sprite_zero_hit = false;
                 self.vblank = false;
             }
 
@@ -99,7 +100,10 @@ impl Ppu {
             }
 
             if self.scanline < 240 {
-                self.render_scanline();
+                let sprite_0_hit = self.render_scanline();
+                if sprite_0_hit {
+                    self.status_register.sprite_zero_hit = true;
+                }
             }
         }
     }
@@ -123,10 +127,11 @@ impl Ppu {
         self.read_ppu_memory(addr as u16) as usize
     }
 
-    pub fn render_scanline(&mut self) {
+    pub fn render_scanline(&mut self) -> bool {
         let screen_y = self.scanline as u32;
         let coarse_y = screen_y / 8;
         let fine_y = screen_y % 8;
+        let mut sprite_0_hit = false;
 
         // Temporary buffer of pixels as (color, palette_id) pairs.
         let mut pixels = [(0_u8, 0_u8); 32 * 8];
@@ -150,6 +155,9 @@ impl Ppu {
                 }
                 let (bg_pixel, _) = pixels[screen_x as usize];
                 if bg_pixel == 0 || (pixel > 0 && sprite.data.attr.priority) {
+                    if sprite.id == 0 {
+                        sprite_0_hit = true;
+                    }
                     pixels[screen_x as usize] = (pixel, sprite.data.attr.palette_id + 4);
                 }
             }
@@ -162,6 +170,7 @@ impl Ppu {
                 .image
                 .put_pixel(screen_x as u32, screen_y as u32, rgb);
         }
+        sprite_0_hit
     }
 
     pub fn get_palette_entry(&self, palette_id: usize, entry: usize) -> Rgba<u8> {
@@ -321,16 +330,18 @@ impl NametableEntry {
 // Sprite / OAM
 
 pub struct Sprite {
+    id: usize,
     data: OamEntry,
     pattern: Pattern,
 }
 
 impl Sprite {
-    pub fn new(ppu: &Ppu, sprite_id: usize) -> Sprite {
-        let sprite_addr = sprite_id * 4;
+    pub fn new(ppu: &Ppu, id: usize) -> Sprite {
+        let sprite_addr = id * 4;
         let data =
             OamEntry::unpack_from_slice(&ppu.oam_data[sprite_addr..sprite_addr + 4]).unwrap();
         Sprite {
+            id,
             data,
             pattern: Pattern::new(ppu.control_register.sprite_pattern_addr as u8, data.index),
         }
