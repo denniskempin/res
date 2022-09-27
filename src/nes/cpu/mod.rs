@@ -138,7 +138,7 @@ impl CpuBus {
         let start_addr = (memory_page as u16) << 8;
         for i in 0x00..=0xFF_u8 {
             let value = self.read(start_addr + i as u16);
-            self.ppu.write_oam(i, value);
+            self.ppu.oam_data[i as usize] = value;
         }
         // Hack.. we should be advancing the CPU clock, but don't have access
         // to it here. Instead just advance everything else on the bus.

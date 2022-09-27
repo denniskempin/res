@@ -15,6 +15,7 @@ use bincode::Encode;
 
 use self::cpu::Cpu;
 use self::cpu::Operation;
+use self::ppu::Ppu;
 use self::trace::Trace;
 
 #[derive(Default, Encode, Decode)]
@@ -24,6 +25,14 @@ pub struct System {
 }
 
 impl System {
+    pub fn cpu<'a>(&'a self) -> &'a Cpu {
+        &self.cpu
+    }
+
+    pub fn ppu<'a>(&'a self) -> &'a Ppu {
+        &self.cpu.bus.ppu
+    }
+
     pub fn tick(&mut self) -> Result<bool> {
         self.cpu.execute_one()
     }

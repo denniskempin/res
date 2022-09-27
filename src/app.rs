@@ -3,14 +3,21 @@ use std::io::Read;
 
 use eframe::CreationContext;
 use eframe::Frame;
+use egui::vec2;
+use egui::Color32;
 use egui::ColorImage;
 use egui::Context;
 use egui::DroppedFile;
 use egui::Image;
 use egui::InputState;
 use egui::Key;
+use egui::RichText;
+use egui::Rounding;
 use egui::Sense;
 use egui::TextureHandle;
+use egui::Ui;
+use egui::Vec2;
+use image::RgbaImage;
 
 use crate::nes::joypad::JoypadButton;
 use crate::nes::System;
@@ -19,6 +26,15 @@ pub struct EmulatorApp {
     emulator: System,
     texture: TextureHandle,
     loaded: bool,
+    palette_texture: TextureHandle,
+}
+
+pub fn set_texture_from_image(handle: &mut TextureHandle, image: &RgbaImage) {
+    let egui_image = ColorImage::from_rgba_unmultiplied(
+        [image.width() as usize, image.height() as usize],
+        image.as_flat_samples().as_slice(),
+    );
+    handle.set(egui_image);
 }
 
 impl EmulatorApp {
@@ -36,6 +52,7 @@ impl EmulatorApp {
             texture: cc
                 .egui_ctx
                 .load_texture("Framebuffer", ColorImage::example()),
+            palette_texture: cc.egui_ctx.load_texture("Palette", ColorImage::example()),
         }
     }
 
@@ -52,33 +69,15 @@ impl EmulatorApp {
         self.loaded = true;
     }
 
-    pub fn render_display(&mut self, ui: &mut egui::Ui) {
-        let desired_size = ui.available_size();
-        let (whole_rect, _) =
-            ui.allocate_exact_size(desired_size, Sense::focusable_noninteractive());
-
-        let image = Image::new(&self.texture, self.texture.size_vec2());
-        image.paint_at(ui, whole_rect);
+    fn update_framebuffer(&mut self) {
+        set_texture_from_image(&mut self.texture, &self.emulator.ppu().framebuffer.image);
     }
 
-    fn update_display(&mut self) {
-        /*let mut image: RgbaImage = ImageBuffer::new(32 * 8, 30 * 8);
-        self.emulator
-            .cpu
-            .bus
-            .ppu
-            .debug_render_nametable(&mut image.sub_image(0, 0, 32 * 8, 30 * 8));
-        self.emulator
-            .cpu
-            .bus
-            .ppu
-            .debug_render_sprites(&mut image.sub_image(0, 0, 32 * 8, 30 * 8));*/
-        let image = &self.emulator.cpu.bus.ppu.framebuffer.image;
-        let egui_image = ColorImage::from_rgba_unmultiplied(
-            [image.width() as usize, image.height() as usize],
-            image.as_flat_samples().as_slice(),
+    fn update_debug_textures(&mut self) {
+        set_texture_from_image(
+            &mut self.palette_texture,
+            &self.emulator.ppu().render_palette(),
         );
-        self.texture.set(egui_image);
     }
 
     fn update_keys(&mut self, input: &InputState) {
@@ -92,6 +91,29 @@ impl EmulatorApp {
         joypad0.set_button(JoypadButton::ButtonB, input.key_down(Key::Z));
         joypad0.set_button(JoypadButton::ButtonA, input.key_down(Key::X));
     }
+
+    fn palette_table(&self, ui: &mut Ui) {
+        ui.label(RichText::new("Color Palette").strong());
+        for palette_id in 0..8 {
+            ui.columns(4, |cols| {
+                for (color_id, col) in cols.iter_mut().enumerate() {
+                    let desired_size = vec2(col.available_size().x, 16.0);
+                    let (whole_rect, response) =
+                        col.allocate_exact_size(desired_size, Sense::focusable_noninteractive());
+                    response.on_hover_text(format!("Color {color_id} of palette {palette_id}"));
+
+                    let color = self.emulator.ppu().get_palette_entry(palette_id, color_id);
+                    col.painter().rect_filled(
+                        whole_rect,
+                        Rounding::none(),
+                        Color32::from_rgba_unmultiplied(
+                            color.0[0], color.0[1], color.0[2], color.0[3],
+                        ),
+                    );
+                }
+            });
+        }
+    }
 }
 
 impl eframe::App for EmulatorApp {
@@ -103,7 +125,8 @@ impl eframe::App for EmulatorApp {
         self.update_keys(&ctx.input());
         if self.loaded {
             self.emulator.execute_one_frame().unwrap();
-            self.update_display();
+            self.update_framebuffer();
+            self.update_debug_textures();
         }
 
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
@@ -114,9 +137,21 @@ impl eframe::App for EmulatorApp {
             });
         });
 
+        // Render debug display
+        egui::SidePanel::right("debug_panel")
+            .resizable(false)
+            .show(ctx, |ui| {
+                self.palette_table(ui);
+            });
+
         // Render emulator display
         egui::CentralPanel::default().show(ctx, |ui| {
-            self.render_display(ui);
+            let desired_size = ui.available_size();
+            let (whole_rect, _) =
+                ui.allocate_exact_size(desired_size, Sense::focusable_noninteractive());
+
+            let image = Image::new(&self.texture, self.texture.size_vec2());
+            image.paint_at(ui, whole_rect);
         });
 
         // Always repaint to keep rendering at 60Hz.

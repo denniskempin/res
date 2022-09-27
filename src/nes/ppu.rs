@@ -108,6 +108,9 @@ impl Ppu {
         }
     }
 
+    ////////////////////////////////////////////////////////////////////////////////
+    // Scanline Rendering
+
     fn collect_sprites_on_scanline(&self, scanline: usize) -> impl Iterator<Item = Sprite> + '_ {
         (0..64)
             .filter_map(move |i| {
@@ -182,6 +185,9 @@ impl Ppu {
         }
     }
 
+    ////////////////////////////////////////////////////////////////////////////////
+    // PPU Bus
+
     pub fn read_ppu_memory(&self, addr: u16) -> u8 {
         match addr {
             0..=0x1FFF => self.cartridge.borrow().chr[addr as usize],
@@ -204,13 +210,8 @@ impl Ppu {
         };
     }
 
-    pub fn read_oam(&mut self, addr: u8) -> u8 {
-        self.oam_data[addr as usize]
-    }
-
-    pub fn write_oam(&mut self, addr: u8, value: u8) {
-        self.oam_data[addr as usize] = value;
-    }
+    ////////////////////////////////////////////////////////////////////////////////
+    // Registers exposed to CPU bus
 
     fn increment_address_register(&mut self) -> u16 {
         let addr = self.address_register.address();
@@ -290,6 +291,19 @@ impl Ppu {
         } else {
             false
         }
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////
+    // Debug API
+
+    pub fn render_palette(&self) -> RgbaImage {
+        let mut image = RgbaImage::new(4, 8);
+        for y in 0..8 {
+            for x in 0..4 {
+                image.put_pixel(x, y, self.get_palette_entry(y as usize, x as usize));
+            }
+        }
+        image
     }
 }
 
