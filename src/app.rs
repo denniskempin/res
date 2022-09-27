@@ -27,6 +27,7 @@ pub struct EmulatorApp {
     texture: TextureHandle,
     loaded: bool,
     palette_texture: TextureHandle,
+    nametable_texture: TextureHandle,
 }
 
 pub fn set_texture_from_image(handle: &mut TextureHandle, image: &RgbaImage) {
@@ -53,6 +54,7 @@ impl EmulatorApp {
                 .egui_ctx
                 .load_texture("Framebuffer", ColorImage::example()),
             palette_texture: cc.egui_ctx.load_texture("Palette", ColorImage::example()),
+            nametable_texture: cc.egui_ctx.load_texture("Nametable", ColorImage::example()),
         }
     }
 
@@ -75,8 +77,8 @@ impl EmulatorApp {
 
     fn update_debug_textures(&mut self) {
         set_texture_from_image(
-            &mut self.palette_texture,
-            &self.emulator.ppu().render_palette(),
+            &mut self.nametable_texture,
+            &self.emulator.ppu().debug_render_nametable(),
         );
     }
 
@@ -142,6 +144,9 @@ impl eframe::App for EmulatorApp {
             .resizable(false)
             .show(ctx, |ui| {
                 self.palette_table(ui);
+                ui.separator();
+                ui.label(RichText::new("Nametable").strong());
+                ui.image(&self.nametable_texture, vec2(256.0, 240.0));
             });
 
         // Render emulator display

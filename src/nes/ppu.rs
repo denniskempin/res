@@ -296,11 +296,19 @@ impl Ppu {
     ////////////////////////////////////////////////////////////////////////////////
     // Debug API
 
-    pub fn render_palette(&self) -> RgbaImage {
-        let mut image = RgbaImage::new(4, 8);
-        for y in 0..8 {
-            for x in 0..4 {
-                image.put_pixel(x, y, self.get_palette_entry(y as usize, x as usize));
+    pub fn debug_render_nametable(&self) -> RgbaImage {
+        let mut image = RgbaImage::new(32 * 8, 30 * 8);
+        for coarse_y in 0..30 {
+            for coarse_x in 0..32 {
+                let background = NametableEntry::new(self, coarse_x, coarse_y);
+                for fine_y in 0..8 {
+                    for (fine_x, pixel) in background.pattern.row_pixels(&self, fine_y).enumerate()
+                    {
+                        let color =
+                            self.get_palette_entry(background.palette_id as usize, pixel as usize);
+                        image.put_pixel(coarse_x * 8 + fine_x as u32, coarse_y * 8 + fine_y, color);
+                    }
+                }
             }
         }
         image
