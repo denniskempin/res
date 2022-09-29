@@ -6,6 +6,7 @@ pub mod ppu;
 pub mod trace;
 mod util;
 
+use std::cell::RefCell;
 use std::fs;
 use std::path::Path;
 
@@ -13,24 +14,33 @@ use anyhow::Result;
 use bincode::Decode;
 use bincode::Encode;
 
+use self::cartridge::Cartridge;
 use self::cpu::Cpu;
 use self::cpu::Operation;
+use self::joypad::Joypad;
 use self::ppu::Ppu;
 use self::trace::Trace;
 
 #[derive(Default, Encode, Decode)]
 pub struct System {
     pub cpu: Cpu,
-    pub last_apu_cycle: u32,
 }
 
 impl System {
-    pub fn cpu<'a>(&'a self) -> &'a Cpu {
+    pub fn cpu(&self) -> &Cpu {
         &self.cpu
     }
 
-    pub fn ppu<'a>(&'a self) -> &'a Ppu {
+    pub fn ppu(&self) -> &Ppu {
         &self.cpu.bus.ppu
+    }
+
+    pub fn cartridge(&self) -> &RefCell<Cartridge> {
+        &self.cpu.bus.cartridge
+    }
+
+    pub fn joypad0_mut(&mut self) -> &mut Joypad {
+        &mut self.cpu.bus.joypad0
     }
 
     pub fn tick(&mut self) -> Result<bool> {
@@ -81,22 +91,21 @@ impl System {
 
     pub fn with_program(program: &[u8]) -> Result<System> {
         let mut system = System::default();
-        system.load_program(program)?;
+        system.cpu.bus.cartridge.borrow_mut().load_program(program);
+        system.reset()?;
         system.cpu.boot();
         Ok(system)
     }
 
     pub fn with_ines(path: &Path) -> Result<System> {
-        let mut system = System::default();
         let ines_file = fs::read(path)?;
-        system.load_ines(&ines_file)?;
-        system.cpu.boot();
-        Ok(system)
+        System::with_ines_bytes(&ines_file)
     }
 
     pub fn with_ines_bytes(bytes: &[u8]) -> Result<System> {
         let mut system = System::default();
-        system.load_ines(bytes)?;
+        system.cpu.bus.cartridge.borrow_mut().load_ines(bytes)?;
+        system.reset()?;
         system.cpu.boot();
         Ok(system)
     }
@@ -129,16 +138,6 @@ impl System {
             self.execute_one_frame()?;
         }
         Ok(())
-    }
-
-    pub fn load_program(&mut self, program: &[u8]) -> Result<()> {
-        self.cpu.bus.cartridge.borrow_mut().load_program(program);
-        self.reset()
-    }
-
-    pub fn load_ines(&mut self, bytes: &[u8]) -> Result<()> {
-        self.cpu.bus.cartridge.borrow_mut().load_ines(bytes)?;
-        self.reset()
     }
 
     pub fn reset(&mut self) -> Result<()> {

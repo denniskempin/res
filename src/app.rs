@@ -79,7 +79,7 @@ impl EmulatorApp {
     }
 
     fn update_keys(&mut self, input: &InputState) {
-        let joypad0 = &mut self.emulator.cpu.bus.joypad0;
+        let joypad0 = self.emulator.joypad0_mut();
         joypad0.set_button(JoypadButton::Right, input.key_down(Key::ArrowRight));
         joypad0.set_button(JoypadButton::Left, input.key_down(Key::ArrowLeft));
         joypad0.set_button(JoypadButton::Down, input.key_down(Key::ArrowDown));

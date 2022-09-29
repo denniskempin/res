@@ -7,21 +7,16 @@ use criterion::Criterion;
 use res::nes::System;
 
 fn criterion_benchmark(c: &mut Criterion) {
-    c.bench_function("nestest", |b| {
+    c.bench_function("frame_time", |b| {
         b.iter_batched_ref(
             || {
-                let mut system = System::with_ines(Path::new("tests/cpu/nestest.nes")).unwrap();
-                system.cpu.program_counter = 0xC000;
+                let system = System::with_ines(Path::new("tests/ppu/alter_ego.nes")).unwrap();
                 system
             },
             |system: &mut System| {
-                let mut counter = 0;
-                while system.cpu.execute_one().unwrap() {
-                    counter += 1;
-                }
-                assert_eq!(counter, 8992);
+                system.execute_one_frame().unwrap();
             },
-            BatchSize::LargeInput,
+            BatchSize::NumIterations(600),
         )
     });
 }

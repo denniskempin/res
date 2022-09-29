@@ -50,7 +50,7 @@ opt-level = 1
 
 
 [[bench]]
-name = "cpu_bench"
+name = "alter_ego"
 harness = false
 
 [package.metadata.wasm-pack.profile.release]
