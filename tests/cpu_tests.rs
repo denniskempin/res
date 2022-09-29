@@ -55,7 +55,7 @@ pub fn test_snapshot_size() {
     system.cpu.execute_one().unwrap();
     let snapshot = system.snapshot();
     assert!(
-        snapshot.len() < 1024 * 512,
+        snapshot.len() < 1024 * 256,
         "Snapshot is too large: {} kB",
         snapshot.len() / 1024
     );

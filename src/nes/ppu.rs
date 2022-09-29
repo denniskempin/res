@@ -3,12 +3,12 @@ use std::rc::Rc;
 
 use bincode::Decode;
 use bincode::Encode;
-use image::Rgba;
+use egui::Color32;
+use egui::ColorImage;
 use image::RgbaImage;
 use packed_struct::prelude::*;
 
 use super::cartridge::Cartridge;
-use super::util::BincodeImage;
 
 const CONTROL_REGISTER_ADDR: u16 = 0x2000;
 const STATUS_REGISTER_ADDR: u16 = 0x2002;
@@ -18,6 +18,9 @@ const PPU_SCROLL: u16 = 0x2005;
 const ADDRESS_REGISTER_ADDR: u16 = 0x2006;
 const DATA_REGISTER_ADDR: u16 = 0x2007;
 
+const FRAME_WIDTH: usize = 32 * 8;
+const FRAME_HEIGHT: usize = 30 * 8;
+
 ////////////////////////////////////////////////////////////////////////////////
 // PPU
 
@@ -25,7 +28,7 @@ const DATA_REGISTER_ADDR: u16 = 0x2007;
 pub struct Ppu {
     pub cartridge: Rc<RefCell<Cartridge>>,
     pub palette_table: [u8; 32],
-    pub vram: [u8; 2048],
+    pub vram: Vec<u8>,
     pub oam_data: [u8; 256],
     pub internal_data_buffer: u8,
     pub cycle: usize,
@@ -40,7 +43,7 @@ pub struct Ppu {
     pub nmi_interrupt: bool,
     pub vblank: bool,
 
-    pub framebuffer: BincodeImage,
+    pub framebuffer: Framebuffer,
 }
 
 impl Default for Ppu {
@@ -53,7 +56,7 @@ impl Ppu {
     pub fn new(cartridge: Rc<RefCell<Cartridge>>) -> Self {
         Self {
             cartridge,
-            vram: [0; 2048],
+            vram: vec![0; 2048],
             oam_data: [0; 256],
             palette_table: [0; 32],
             internal_data_buffer: 0,
@@ -69,9 +72,7 @@ impl Ppu {
             nmi_interrupt: false,
             vblank: false,
 
-            framebuffer: BincodeImage {
-                image: RgbaImage::new(32 * 8, 30 * 8),
-            },
+            framebuffer: Framebuffer::default(),
         }
     }
 
@@ -131,7 +132,7 @@ impl Ppu {
     }
 
     pub fn render_scanline(&mut self) -> bool {
-        let screen_y = self.scanline as u32;
+        let screen_y = self.scanline as usize;
         let coarse_y = screen_y / 8;
         let fine_y = screen_y % 8;
         let mut sprite_0_hit = false;
@@ -143,21 +144,21 @@ impl Ppu {
         for coarse_x in 0..32 {
             let background = NametableEntry::new(self, coarse_x, coarse_y);
             for (fine_x, pixel) in background.pattern.row_pixels(self, fine_y).enumerate() {
-                let screen_x = coarse_x * 8 + fine_x as u32;
+                let screen_x = coarse_x * 8 + fine_x as usize;
                 pixels[screen_x as usize] = (pixel, background.palette_id);
             }
         }
 
         // Add sprite pixels
         for sprite in self.collect_sprites_on_scanline(self.scanline) {
-            let sprite_row = screen_y - sprite.data.y as u32;
+            let sprite_row = screen_y - sprite.data.y as usize;
             for (fine_x, pixel) in sprite.row_pixels(self, sprite_row).enumerate() {
-                let screen_x = sprite.data.x as u32 + fine_x as u32;
+                let screen_x = sprite.data.x as usize + fine_x as usize;
                 if screen_x >= 32 * 8 {
                     break;
                 }
                 let (bg_pixel, _) = pixels[screen_x as usize];
-                if bg_pixel == 0 || (pixel > 0 && sprite.data.attr.priority) {
+                if bg_pixel == 0 || (pixel > 0 && !sprite.data.attr.priority) {
                     if sprite.id == 0 {
                         sprite_0_hit = true;
                     }
@@ -168,20 +169,18 @@ impl Ppu {
 
         // Convert into RGBA and write into framebuffer
         for (screen_x, (color, palette)) in pixels.into_iter().enumerate() {
-            let rgb = self.get_palette_entry(palette as usize, color as usize);
-            self.framebuffer
-                .image
-                .put_pixel(screen_x as u32, screen_y as u32, rgb);
+            self.framebuffer[(screen_x, screen_y)] =
+                self.get_palette_entry(palette as usize, color as usize);
         }
         sprite_0_hit
     }
 
-    pub fn get_palette_entry(&self, palette_id: usize, entry: usize) -> Rgba<u8> {
+    pub fn get_palette_entry(&self, palette_id: usize, entry: usize) -> u8 {
         if entry == 0 {
-            SYSTEM_PALETTE[self.read_ppu_memory(0x3F00) as usize]
+            self.read_ppu_memory(0x3F00)
         } else {
             let addr = 0x3F00 + (palette_id as u16 * 4) + entry as u16;
-            SYSTEM_PALETTE[self.read_ppu_memory(addr) as usize]
+            self.read_ppu_memory(addr)
         }
     }
 
@@ -205,7 +204,7 @@ impl Ppu {
 
         match addr {
             0..=0x1FFF => self.cartridge.borrow_mut().chr[addr as usize] = value,
-            0x2000..=0x3FFF => self.vram[(addr - 0x2000) as usize % self.vram.len()] = value,
+            0x2000..=0x3FFF => self.vram[(addr - 0x2000) as usize % 2048] = value,
             _ => println!("Warning: Invalid PPU address write {addr:04X}"),
         };
     }
@@ -296,8 +295,8 @@ impl Ppu {
     ////////////////////////////////////////////////////////////////////////////////
     // Debug API
 
-    pub fn debug_render_nametable(&self) -> RgbaImage {
-        let mut image = RgbaImage::new(32 * 8, 30 * 8);
+    pub fn debug_render_nametable(&self) -> ColorImage {
+        let mut image = ColorImage::new([32 * 8, 30 * 8], Color32::TRANSPARENT);
         for coarse_y in 0..30 {
             for coarse_x in 0..32 {
                 let background = NametableEntry::new(self, coarse_x, coarse_y);
@@ -306,12 +305,73 @@ impl Ppu {
                     {
                         let color =
                             self.get_palette_entry(background.palette_id as usize, pixel as usize);
-                        image.put_pixel(coarse_x * 8 + fine_x as u32, coarse_y * 8 + fine_y, color);
+                        image[(coarse_x * 8 + fine_x, coarse_y * 8 + fine_y)] =
+                            SYSTEM_PALETTE[color as usize];
                     }
                 }
             }
         }
         image
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Framebuffer
+
+#[derive(Decode, Encode)]
+pub struct Framebuffer {
+    pixels: Vec<u8>,
+}
+
+impl Default for Framebuffer {
+    fn default() -> Self {
+        Self {
+            pixels: vec![0; FRAME_WIDTH * FRAME_HEIGHT],
+        }
+    }
+}
+
+impl Framebuffer {
+    pub const SIZE: [usize; 2] = [FRAME_WIDTH, FRAME_HEIGHT];
+
+    pub fn as_rgba_image(&self) -> RgbaImage {
+        RgbaImage::from_vec(
+            FRAME_WIDTH as u32,
+            FRAME_HEIGHT as u32,
+            self.pixels
+                .iter()
+                .flat_map(|c| {
+                    let color32 = SYSTEM_PALETTE[*c as usize];
+                    [color32.r(), color32.g(), color32.b(), color32.a()]
+                })
+                .collect(),
+        )
+        .unwrap()
+    }
+
+    pub fn as_color_image(&self) -> ColorImage {
+        ColorImage {
+            size: Framebuffer::SIZE,
+            pixels: self
+                .pixels
+                .iter()
+                .map(|c| SYSTEM_PALETTE[*c as usize])
+                .collect(),
+        }
+    }
+}
+
+impl std::ops::Index<(usize, usize)> for Framebuffer {
+    type Output = u8;
+
+    fn index(&self, (x, y): (usize, usize)) -> &u8 {
+        &self.pixels[y * FRAME_WIDTH + x]
+    }
+}
+
+impl std::ops::IndexMut<(usize, usize)> for Framebuffer {
+    fn index_mut(&mut self, (x, y): (usize, usize)) -> &mut u8 {
+        &mut self.pixels[y * FRAME_WIDTH + x]
     }
 }
 
@@ -324,7 +384,7 @@ pub struct NametableEntry {
 }
 
 impl NametableEntry {
-    pub fn new(ppu: &Ppu, coarse_x: u32, coarse_y: u32) -> NametableEntry {
+    pub fn new(ppu: &Ppu, coarse_x: usize, coarse_y: usize) -> NametableEntry {
         let addr = 0x2000 + coarse_y * 0x20 + coarse_x;
         let nametable_value = ppu.read_ppu_memory(addr as u16);
 
@@ -369,7 +429,7 @@ impl Sprite {
         }
     }
 
-    pub fn row_pixels(&self, ppu: &Ppu, mut y: u32) -> impl Iterator<Item = u8> {
+    pub fn row_pixels(&self, ppu: &Ppu, mut y: usize) -> impl Iterator<Item = u8> {
         if self.data.attr.flip_v {
             y = 7 - y;
         }
@@ -415,7 +475,7 @@ impl Pattern {
         }
     }
 
-    pub fn row_pixels(&self, ppu: &Ppu, y: u32) -> impl Iterator<Item = u8> + '_ {
+    pub fn row_pixels(&self, ppu: &Ppu, y: usize) -> impl Iterator<Item = u8> + '_ {
         let mut low = ppu.read_ppu_memory(self.addr + y as u16);
         let mut high = ppu.read_ppu_memory(self.addr + y as u16 + 8);
 
@@ -485,71 +545,71 @@ pub struct StatusRegister {
 ////////////////////////////////////////////////////////////////////////////////
 // Palette Lookup Table
 
-pub static SYSTEM_PALETTE: [Rgba<u8>; 64] = [
-    Rgba([0x80, 0x80, 0x80, 0xFF]),
-    Rgba([0x00, 0x3D, 0xA6, 0xFF]),
-    Rgba([0x00, 0x12, 0xB0, 0xFF]),
-    Rgba([0x44, 0x00, 0x96, 0xFF]),
-    Rgba([0xA1, 0x00, 0x5E, 0xFF]),
-    Rgba([0xC7, 0x00, 0x28, 0xFF]),
-    Rgba([0xBA, 0x06, 0x00, 0xFF]),
-    Rgba([0x8C, 0x17, 0x00, 0xFF]),
-    Rgba([0x5C, 0x2F, 0x00, 0xFF]),
-    Rgba([0x10, 0x45, 0x00, 0xFF]),
-    Rgba([0x05, 0x4A, 0x00, 0xFF]),
-    Rgba([0x00, 0x47, 0x2E, 0xFF]),
-    Rgba([0x00, 0x41, 0x66, 0xFF]),
-    Rgba([0x00, 0x00, 0x00, 0xFF]),
-    Rgba([0x05, 0x05, 0x05, 0xFF]),
-    Rgba([0x05, 0x05, 0x05, 0xFF]),
-    Rgba([0xC7, 0xC7, 0xC7, 0xFF]),
-    Rgba([0x00, 0x77, 0xFF, 0xFF]),
-    Rgba([0x21, 0x55, 0xFF, 0xFF]),
-    Rgba([0x82, 0x37, 0xFA, 0xFF]),
-    Rgba([0xEB, 0x2F, 0xB5, 0xFF]),
-    Rgba([0xFF, 0x29, 0x50, 0xFF]),
-    Rgba([0xFF, 0x22, 0x00, 0xFF]),
-    Rgba([0xD6, 0x32, 0x00, 0xFF]),
-    Rgba([0xC4, 0x62, 0x00, 0xFF]),
-    Rgba([0x35, 0x80, 0x00, 0xFF]),
-    Rgba([0x05, 0x8F, 0x00, 0xFF]),
-    Rgba([0x00, 0x8A, 0x55, 0xFF]),
-    Rgba([0x00, 0x99, 0xCC, 0xFF]),
-    Rgba([0x21, 0x21, 0x21, 0xFF]),
-    Rgba([0x09, 0x09, 0x09, 0xFF]),
-    Rgba([0x09, 0x09, 0x09, 0xFF]),
-    Rgba([0xFF, 0xFF, 0xFF, 0xFF]),
-    Rgba([0x0F, 0xD7, 0xFF, 0xFF]),
-    Rgba([0x69, 0xA2, 0xFF, 0xFF]),
-    Rgba([0xD4, 0x80, 0xFF, 0xFF]),
-    Rgba([0xFF, 0x45, 0xF3, 0xFF]),
-    Rgba([0xFF, 0x61, 0x8B, 0xFF]),
-    Rgba([0xFF, 0x88, 0x33, 0xFF]),
-    Rgba([0xFF, 0x9C, 0x12, 0xFF]),
-    Rgba([0xFA, 0xBC, 0x20, 0xFF]),
-    Rgba([0x9F, 0xE3, 0x0E, 0xFF]),
-    Rgba([0x2B, 0xF0, 0x35, 0xFF]),
-    Rgba([0x0C, 0xF0, 0xA4, 0xFF]),
-    Rgba([0x05, 0xFB, 0xFF, 0xFF]),
-    Rgba([0x5E, 0x5E, 0x5E, 0xFF]),
-    Rgba([0x0D, 0x0D, 0x0D, 0xFF]),
-    Rgba([0x0D, 0x0D, 0x0D, 0xFF]),
-    Rgba([0xFF, 0xFF, 0xFF, 0xFF]),
-    Rgba([0xA6, 0xFC, 0xFF, 0xFF]),
-    Rgba([0xB3, 0xEC, 0xFF, 0xFF]),
-    Rgba([0xDA, 0xAB, 0xEB, 0xFF]),
-    Rgba([0xFF, 0xA8, 0xF9, 0xFF]),
-    Rgba([0xFF, 0xAB, 0xB3, 0xFF]),
-    Rgba([0xFF, 0xD2, 0xB0, 0xFF]),
-    Rgba([0xFF, 0xEF, 0xA6, 0xFF]),
-    Rgba([0xFF, 0xF7, 0x9C, 0xFF]),
-    Rgba([0xD7, 0xE8, 0x95, 0xFF]),
-    Rgba([0xA6, 0xED, 0xAF, 0xFF]),
-    Rgba([0xA2, 0xF2, 0xDA, 0xFF]),
-    Rgba([0x99, 0xFF, 0xFC, 0xFF]),
-    Rgba([0xDD, 0xDD, 0xDD, 0xFF]),
-    Rgba([0x11, 0x11, 0x11, 0xFF]),
-    Rgba([0x11, 0x11, 0x11, 0xFF]),
+pub static SYSTEM_PALETTE: [Color32; 64] = [
+    Color32::from_rgb(0x80, 0x80, 0x80),
+    Color32::from_rgb(0x00, 0x3D, 0xA6),
+    Color32::from_rgb(0x00, 0x12, 0xB0),
+    Color32::from_rgb(0x44, 0x00, 0x96),
+    Color32::from_rgb(0xA1, 0x00, 0x5E),
+    Color32::from_rgb(0xC7, 0x00, 0x28),
+    Color32::from_rgb(0xBA, 0x06, 0x00),
+    Color32::from_rgb(0x8C, 0x17, 0x00),
+    Color32::from_rgb(0x5C, 0x2F, 0x00),
+    Color32::from_rgb(0x10, 0x45, 0x00),
+    Color32::from_rgb(0x05, 0x4A, 0x00),
+    Color32::from_rgb(0x00, 0x47, 0x2E),
+    Color32::from_rgb(0x00, 0x41, 0x66),
+    Color32::from_rgb(0x00, 0x00, 0x00),
+    Color32::from_rgb(0x05, 0x05, 0x05),
+    Color32::from_rgb(0x05, 0x05, 0x05),
+    Color32::from_rgb(0xC7, 0xC7, 0xC7),
+    Color32::from_rgb(0x00, 0x77, 0xFF),
+    Color32::from_rgb(0x21, 0x55, 0xFF),
+    Color32::from_rgb(0x82, 0x37, 0xFA),
+    Color32::from_rgb(0xEB, 0x2F, 0xB5),
+    Color32::from_rgb(0xFF, 0x29, 0x50),
+    Color32::from_rgb(0xFF, 0x22, 0x00),
+    Color32::from_rgb(0xD6, 0x32, 0x00),
+    Color32::from_rgb(0xC4, 0x62, 0x00),
+    Color32::from_rgb(0x35, 0x80, 0x00),
+    Color32::from_rgb(0x05, 0x8F, 0x00),
+    Color32::from_rgb(0x00, 0x8A, 0x55),
+    Color32::from_rgb(0x00, 0x99, 0xCC),
+    Color32::from_rgb(0x21, 0x21, 0x21),
+    Color32::from_rgb(0x09, 0x09, 0x09),
+    Color32::from_rgb(0x09, 0x09, 0x09),
+    Color32::from_rgb(0xFF, 0xFF, 0xFF),
+    Color32::from_rgb(0x0F, 0xD7, 0xFF),
+    Color32::from_rgb(0x69, 0xA2, 0xFF),
+    Color32::from_rgb(0xD4, 0x80, 0xFF),
+    Color32::from_rgb(0xFF, 0x45, 0xF3),
+    Color32::from_rgb(0xFF, 0x61, 0x8B),
+    Color32::from_rgb(0xFF, 0x88, 0x33),
+    Color32::from_rgb(0xFF, 0x9C, 0x12),
+    Color32::from_rgb(0xFA, 0xBC, 0x20),
+    Color32::from_rgb(0x9F, 0xE3, 0x0E),
+    Color32::from_rgb(0x2B, 0xF0, 0x35),
+    Color32::from_rgb(0x0C, 0xF0, 0xA4),
+    Color32::from_rgb(0x05, 0xFB, 0xFF),
+    Color32::from_rgb(0x5E, 0x5E, 0x5E),
+    Color32::from_rgb(0x0D, 0x0D, 0x0D),
+    Color32::from_rgb(0x0D, 0x0D, 0x0D),
+    Color32::from_rgb(0xFF, 0xFF, 0xFF),
+    Color32::from_rgb(0xA6, 0xFC, 0xFF),
+    Color32::from_rgb(0xB3, 0xEC, 0xFF),
+    Color32::from_rgb(0xDA, 0xAB, 0xEB),
+    Color32::from_rgb(0xFF, 0xA8, 0xF9),
+    Color32::from_rgb(0xFF, 0xAB, 0xB3),
+    Color32::from_rgb(0xFF, 0xD2, 0xB0),
+    Color32::from_rgb(0xFF, 0xEF, 0xA6),
+    Color32::from_rgb(0xFF, 0xF7, 0x9C),
+    Color32::from_rgb(0xD7, 0xE8, 0x95),
+    Color32::from_rgb(0xA6, 0xED, 0xAF),
+    Color32::from_rgb(0xA2, 0xF2, 0xDA),
+    Color32::from_rgb(0x99, 0xFF, 0xFC),
+    Color32::from_rgb(0xDD, 0xDD, 0xDD),
+    Color32::from_rgb(0x11, 0x11, 0x11),
+    Color32::from_rgb(0x11, 0x11, 0x11),
 ];
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -1,5 +1,6 @@
 /target
 /node_modules
 /dist
+/roms
 .DS_STORE
 yarn-error.log

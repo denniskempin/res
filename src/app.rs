@@ -4,7 +4,6 @@ use std::io::Read;
 use eframe::CreationContext;
 use eframe::Frame;
 use egui::vec2;
-use egui::Color32;
 use egui::ColorImage;
 use egui::Context;
 use egui::DroppedFile;
@@ -16,17 +15,16 @@ use egui::Rounding;
 use egui::Sense;
 use egui::TextureHandle;
 use egui::Ui;
-use egui::Vec2;
 use image::RgbaImage;
 
 use crate::nes::joypad::JoypadButton;
+use crate::nes::ppu::SYSTEM_PALETTE;
 use crate::nes::System;
 
 pub struct EmulatorApp {
     emulator: System,
-    texture: TextureHandle,
     loaded: bool,
-    palette_texture: TextureHandle,
+    framebuffer_texture: TextureHandle,
     nametable_texture: TextureHandle,
 }
 
@@ -50,10 +48,9 @@ impl EmulatorApp {
                 System::default()
             },
             loaded,
-            texture: cc
+            framebuffer_texture: cc
                 .egui_ctx
                 .load_texture("Framebuffer", ColorImage::example()),
-            palette_texture: cc.egui_ctx.load_texture("Palette", ColorImage::example()),
             nametable_texture: cc.egui_ctx.load_texture("Nametable", ColorImage::example()),
         }
     }
@@ -72,14 +69,13 @@ impl EmulatorApp {
     }
 
     fn update_framebuffer(&mut self) {
-        set_texture_from_image(&mut self.texture, &self.emulator.ppu().framebuffer.image);
+        self.framebuffer_texture
+            .set(self.emulator.ppu().framebuffer.as_color_image());
     }
 
     fn update_debug_textures(&mut self) {
-        set_texture_from_image(
-            &mut self.nametable_texture,
-            &self.emulator.ppu().debug_render_nametable(),
-        );
+        self.nametable_texture
+            .set(self.emulator.ppu().debug_render_nametable())
     }
 
     fn update_keys(&mut self, input: &InputState) {
@@ -108,9 +104,7 @@ impl EmulatorApp {
                     col.painter().rect_filled(
                         whole_rect,
                         Rounding::none(),
-                        Color32::from_rgba_unmultiplied(
-                            color.0[0], color.0[1], color.0[2], color.0[3],
-                        ),
+                        SYSTEM_PALETTE[color as usize],
                     );
                 }
             });
@@ -155,7 +149,10 @@ impl eframe::App for EmulatorApp {
             let (whole_rect, _) =
                 ui.allocate_exact_size(desired_size, Sense::focusable_noninteractive());
 
-            let image = Image::new(&self.texture, self.texture.size_vec2());
+            let image = Image::new(
+                &self.framebuffer_texture,
+                self.framebuffer_texture.size_vec2(),
+            );
             image.paint_at(ui, whole_rect);
         });
 
