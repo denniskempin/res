@@ -1,39 +1,31 @@
+mod debugger;
+
 use std::fs::File;
 use std::io::Read;
 
 use eframe::CreationContext;
 use eframe::Frame;
-use egui::vec2;
 use egui::ColorImage;
 use egui::Context;
 use egui::DroppedFile;
 use egui::Image;
 use egui::InputState;
 use egui::Key;
-use egui::RichText;
-use egui::Rounding;
+use egui::Layout;
 use egui::Sense;
 use egui::TextureHandle;
 use egui::Ui;
-use image::RgbaImage;
 
+use self::debugger::Debugger;
 use crate::nes::joypad::JoypadButton;
-use crate::nes::ppu::SYSTEM_PALETTE;
 use crate::nes::System;
 
 pub struct EmulatorApp {
     emulator: System,
     loaded: bool,
     framebuffer_texture: TextureHandle,
-    nametable_texture: TextureHandle,
-}
-
-pub fn set_texture_from_image(handle: &mut TextureHandle, image: &RgbaImage) {
-    let egui_image = ColorImage::from_rgba_unmultiplied(
-        [image.width() as usize, image.height() as usize],
-        image.as_flat_samples().as_slice(),
-    );
-    handle.set(egui_image);
+    debug_mode: bool,
+    debug_state: Debugger,
 }
 
 impl EmulatorApp {
@@ -51,7 +43,8 @@ impl EmulatorApp {
             framebuffer_texture: cc
                 .egui_ctx
                 .load_texture("Framebuffer", ColorImage::example()),
-            nametable_texture: cc.egui_ctx.load_texture("Nametable", ColorImage::example()),
+            debug_mode: false,
+            debug_state: Debugger::new(cc),
         }
     }
 
@@ -68,16 +61,6 @@ impl EmulatorApp {
         self.loaded = true;
     }
 
-    fn update_framebuffer(&mut self) {
-        self.framebuffer_texture
-            .set(self.emulator.ppu().framebuffer.as_color_image());
-    }
-
-    fn update_debug_textures(&mut self) {
-        self.nametable_texture
-            .set(self.emulator.ppu().debug_render_nametable())
-    }
-
     fn update_keys(&mut self, input: &InputState) {
         let joypad0 = self.emulator.joypad0_mut();
         joypad0.set_button(JoypadButton::Right, input.key_down(Key::ArrowRight));
@@ -90,25 +73,34 @@ impl EmulatorApp {
         joypad0.set_button(JoypadButton::ButtonA, input.key_down(Key::X));
     }
 
-    fn palette_table(&self, ui: &mut Ui) {
-        ui.label(RichText::new("Color Palette").strong());
-        for palette_id in 0..8 {
-            ui.columns(4, |cols| {
-                for (color_id, col) in cols.iter_mut().enumerate() {
-                    let desired_size = vec2(col.available_size().x, 16.0);
-                    let (whole_rect, response) =
-                        col.allocate_exact_size(desired_size, Sense::focusable_noninteractive());
-                    response.on_hover_text(format!("Color {color_id} of palette {palette_id}"));
-
-                    let color = self.emulator.ppu().get_palette_entry(palette_id, color_id);
-                    col.painter().rect_filled(
-                        whole_rect,
-                        Rounding::none(),
-                        SYSTEM_PALETTE[color as usize],
-                    );
+    fn menu_bar(&mut self, ui: &mut Ui) {
+        ui.columns(2, |columns| {
+            columns[0].with_layout(Layout::left_to_right(), |ui| {
+                ui.menu_button("Programs", |_ui| {});
+                ui.menu_button("Games", |_ui| {});
+                ui.label("(Or drop a .nes file to load it)");
+            });
+            columns[1].with_layout(Layout::right_to_left(), |ui| {
+                if ui.button("Debug").clicked() {
+                    self.debug_mode = !self.debug_mode;
                 }
             });
-        }
+        });
+    }
+
+    fn main_display(&mut self, ui: &mut Ui) {
+        self.framebuffer_texture
+            .set(self.emulator.ppu().framebuffer.as_color_image());
+
+        let desired_size = ui.available_size();
+        let (whole_rect, _) =
+            ui.allocate_exact_size(desired_size, Sense::focusable_noninteractive());
+
+        let image = Image::new(
+            &self.framebuffer_texture,
+            self.framebuffer_texture.size_vec2(),
+        );
+        image.paint_at(ui, whole_rect);
     }
 }
 
@@ -118,42 +110,38 @@ impl eframe::App for EmulatorApp {
         if !ctx.input().raw.dropped_files.is_empty() {
             self.load_dropped_file(&ctx.input().raw.dropped_files[0]);
         }
+
         self.update_keys(&ctx.input());
-        if self.loaded {
-            self.emulator.execute_one_frame().unwrap();
-            self.update_framebuffer();
-            self.update_debug_textures();
-        }
 
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.menu_button("Programs", |_ui| {});
-                ui.menu_button("Games", |_ui| {});
-                ui.label("(Or drop a .nes file to load it)")
-            });
+            self.menu_bar(ui);
         });
 
-        // Render debug display
-        egui::SidePanel::right("debug_panel")
-            .resizable(false)
-            .show(ctx, |ui| {
-                self.palette_table(ui);
-                ui.separator();
-                ui.label(RichText::new("Nametable").strong());
-                ui.image(&self.nametable_texture, vec2(256.0, 240.0));
-            });
+        if !self.loaded {
+            return;
+        }
+
+        if !self.debug_mode {
+            self.emulator.execute_one_frame().unwrap();
+        } else {
+            self.debug_state.run_emulator(&mut self.emulator);
+
+            egui::SidePanel::right("right_debug_panel")
+                .resizable(false)
+                .show(ctx, |ui| {
+                    self.debug_state.right_debug_panel(ui, &self.emulator);
+                });
+
+            egui::TopBottomPanel::bottom("bottom_debug_panel")
+                .resizable(false)
+                .show(ctx, |ui| {
+                    self.debug_state.bottom_debug_panel(ui, &self.emulator);
+                });
+        }
 
         // Render emulator display
         egui::CentralPanel::default().show(ctx, |ui| {
-            let desired_size = ui.available_size();
-            let (whole_rect, _) =
-                ui.allocate_exact_size(desired_size, Sense::focusable_noninteractive());
-
-            let image = Image::new(
-                &self.framebuffer_texture,
-                self.framebuffer_texture.size_vec2(),
-            );
-            image.paint_at(ui, whole_rect);
+            self.main_display(ui);
         });
 
         // Always repaint to keep rendering at 60Hz.
