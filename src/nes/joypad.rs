@@ -12,7 +12,7 @@ pub enum JoypadButton {
     Right = 7,
 }
 
-#[derive(Default, Encode, Decode)]
+#[derive(Default, Encode, Decode, Clone)]
 pub struct Joypad {
     strobe: bool,
     index: usize,

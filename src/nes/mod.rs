@@ -21,7 +21,7 @@ use self::joypad::Joypad;
 use self::ppu::Ppu;
 use self::trace::Trace;
 
-#[derive(Default, Encode, Decode)]
+#[derive(Default, Encode, Decode, Clone)]
 pub struct System {
     pub cpu: Cpu,
 }

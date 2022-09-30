@@ -17,7 +17,7 @@ use super::ppu::Ppu;
 ////////////////////////////////////////////////////////////////////////////////
 // CpuBus
 
-#[derive(Encode, Decode)]
+#[derive(Encode, Decode, Clone)]
 pub struct CpuBus {
     pub ram: [u8; 0x2000],
     pub cartridge: Rc<RefCell<Cartridge>>,
@@ -150,7 +150,7 @@ impl CpuBus {
 ////////////////////////////////////////////////////////////////////////////////
 // StatusFlags
 
-#[derive(PackedStruct, Encode, Decode, Debug, Default, Clone, Copy, PartialEq)]
+#[derive(PackedStruct, Encode, Decode, Clone, Debug, Default, Copy, PartialEq)]
 #[packed_struct(bit_numbering = "msb0")]
 pub struct StatusFlags {
     negative: bool,
@@ -185,7 +185,7 @@ enum InterruptVector {
 ////////////////////////////////////////////////////////////////////////////////
 // Cpu
 
-#[derive(Encode, Decode)]
+#[derive(Encode, Decode, Clone)]
 pub struct Cpu {
     pub a: u8,
     pub x: u8,

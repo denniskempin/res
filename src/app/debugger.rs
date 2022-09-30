@@ -1,7 +1,9 @@
 use std::collections::VecDeque;
+use std::fmt::Debug;
 
 use eframe::CreationContext;
 use egui::vec2;
+use egui::Button;
 use egui::ColorImage;
 use egui::RichText;
 use egui::Rounding;
@@ -15,9 +17,8 @@ use crate::nes::System;
 pub struct Debugger {
     nametable_texture: TextureHandle,
 
-    run_mode: RunMode,
-    selected_run_mode: RunMode,
-    previous_states: VecDeque<Vec<u8>>,
+    command: Option<DebugCommand>,
+    previous_states: StateStack,
 }
 
 impl Debugger {
@@ -25,36 +26,37 @@ impl Debugger {
     pub fn new(cc: &CreationContext<'_>) -> Self {
         Debugger {
             nametable_texture: cc.egui_ctx.load_texture("Nametable", ColorImage::example()),
-            run_mode: RunMode::Indefinitely,
-            selected_run_mode: RunMode::NextFrame,
-            previous_states: VecDeque::new(),
+            command: None,
+            previous_states: StateStack::default(),
         }
     }
 
     pub fn run_emulator(&mut self, emulator: &mut System) {
-        match self.run_mode {
-            RunMode::Paused => (),
-            RunMode::Indefinitely => {
-                emulator.execute_one_frame().unwrap();
-            }
-            RunMode::NextScanline => {
-                emulator.execute_one_frame().unwrap();
-                self.run_mode = RunMode::Paused;
-            }
-            RunMode::NextVblank => {
-                emulator.execute_one_frame().unwrap();
-                self.run_mode = RunMode::Paused;
-            }
-            RunMode::NextFrame => {
-                emulator.execute_one_frame().unwrap();
-                self.run_mode = RunMode::Paused;
+        if let Some(command) = self.command {
+            match command {
+                DebugCommand::Run => {
+                    emulator.execute_one_frame().unwrap();
+                }
+                DebugCommand::StepFrames(n) => {
+                    emulator.execute_one_frame().unwrap();
+                    if n > 1 {
+                        self.command = Some(DebugCommand::StepFrames(n - 1));
+                    } else {
+                        self.command = None
+                    }
+                }
+                DebugCommand::StepBack => {
+                    *emulator = self.previous_states.pop();
+                    self.command = None
+                }
+                _ => (),
             }
         }
     }
 
     pub fn right_debug_panel(&mut self, ui: &mut Ui, emulator: &System) {
         ui.separator();
-        self.debug_controls(ui);
+        self.debug_controls(ui, emulator);
         ui.separator();
         self.palette_table(ui, emulator);
         ui.separator();
@@ -90,54 +92,63 @@ impl Debugger {
         }
     }
 
-    fn debug_controls(&mut self, ui: &mut Ui) {
+    fn debug_controls(&mut self, ui: &mut Ui, emulator: &System) {
         ui.horizontal_wrapped(|ui| {
-            if self.run_mode != RunMode::Paused {
-                if ui.button("Pause").clicked() {
-                    self.run_mode = RunMode::Paused;
+            let paused = self.command.is_none();
+
+            if ui.button(if paused { "Run" } else { "Pause" }).clicked() {
+                if paused {
+                    self.previous_states.push(emulator.clone());
+                    self.command = Some(DebugCommand::Run);
+                } else {
+                    self.command = None;
                 }
-                return;
             }
 
-            egui::ComboBox::from_label("")
-                .selected_text(format!("{:?}", self.selected_run_mode))
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(
-                        &mut self.selected_run_mode,
-                        RunMode::Indefinitely,
-                        "Indefinitely",
-                    );
-                    ui.selectable_value(
-                        &mut self.selected_run_mode,
-                        RunMode::NextFrame,
-                        "NextFrame",
-                    );
-                    ui.selectable_value(
-                        &mut self.selected_run_mode,
-                        RunMode::NextVblank,
-                        "NextVblank",
-                    );
-                    ui.selectable_value(
-                        &mut self.selected_run_mode,
-                        RunMode::NextScanline,
-                        "NextScanline",
-                    );
-                });
-
-            if ui.button("Run").clicked() {
-                self.run_mode = self.selected_run_mode;
+            if ui.add_enabled(paused, Button::new("Step Frame")).clicked() {
+                self.previous_states.push(emulator.clone());
+                self.command = Some(DebugCommand::StepFrames(1));
             }
 
-            if !self.previous_states.is_empty() && ui.button("Step Back").clicked() {}
+            if ui
+                .add_enabled(
+                    paused && !self.previous_states.is_empty(),
+                    Button::new("Step Back"),
+                )
+                .clicked()
+            {
+                self.command = Some(DebugCommand::StepBack);
+            }
         });
     }
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
-enum RunMode {
-    Paused,
-    Indefinitely,
-    NextScanline,
-    NextVblank,
-    NextFrame,
+enum DebugCommand {
+    Run,
+    StepFrames(u32),
+    StepInstructions(u32),
+    StepScanlines(u32),
+    StepBack,
+    RunToNextVblankStart,
+    RunToNextVblankEnd,
+}
+
+#[derive(Default)]
+pub struct StateStack {
+    stack: VecDeque<System>,
+}
+
+impl StateStack {
+    pub fn is_empty(&self) -> bool {
+        self.stack.is_empty()
+    }
+    pub fn pop(&mut self) -> System {
+        self.stack.pop_front().unwrap()
+    }
+
+    pub fn push(&mut self, system: System) {
+        self.stack.push_front(system);
+        self.stack.truncate(256);
+    }
 }

@@ -24,7 +24,7 @@ const FRAME_HEIGHT: usize = 30 * 8;
 ////////////////////////////////////////////////////////////////////////////////
 // PPU
 
-#[derive(Encode, Decode)]
+#[derive(Encode, Decode, Clone)]
 pub struct Ppu {
     pub cartridge: Rc<RefCell<Cartridge>>,
     pub palette_table: [u8; 32],
@@ -317,7 +317,7 @@ impl Ppu {
 ////////////////////////////////////////////////////////////////////////////////
 // Framebuffer
 
-#[derive(Decode, Encode)]
+#[derive(Decode, Encode, Clone)]
 pub struct Framebuffer {
     pixels: Vec<u8>,
 }
@@ -491,7 +491,7 @@ impl Pattern {
 ////////////////////////////////////////////////////////////////////////////////
 // Registers
 
-#[derive(Default, Encode, Decode)]
+#[derive(Default, Encode, Decode, Clone)]
 pub struct AddressRegister {
     value: [u8; 2],
     write_high: bool,
@@ -520,7 +520,7 @@ impl AddressRegister {
     }
 }
 
-#[derive(PackedStruct, Encode, Decode, Debug, Default, Clone, Copy, PartialEq)]
+#[derive(PackedStruct, Encode, Decode, Clone, Debug, Default, Copy, PartialEq)]
 #[packed_struct(bit_numbering = "msb0", size_bytes = "1")]
 pub struct ControlRegister {
     generate_nmi: bool,
@@ -533,7 +533,7 @@ pub struct ControlRegister {
     nametable: u8,
 }
 
-#[derive(PackedStruct, Encode, Decode, Debug, Default, Clone, Copy, PartialEq)]
+#[derive(PackedStruct, Encode, Decode, Clone, Debug, Default, Copy, PartialEq)]
 #[packed_struct(bit_numbering = "msb0", size_bytes = "1")]
 pub struct StatusRegister {
     vblank_started: bool,
