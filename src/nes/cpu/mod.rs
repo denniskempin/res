@@ -1,6 +1,8 @@
 mod operations;
 
 use std::cell::RefCell;
+use std::fmt::Display;
+use std::fmt::Write;
 use std::rc::Rc;
 
 use anyhow::Result;
@@ -170,6 +172,19 @@ impl StatusFlags {
 
     pub fn from_bits(bits: u8) -> StatusFlags {
         StatusFlags::unpack(&[bits]).unwrap()
+    }
+
+    pub fn pretty_print(&self) -> String {
+        let mut chars: Vec<char> = Vec::new();
+        chars.push(if self.carry { 'C' } else { '.' });
+        chars.push(if self.zero { 'Z' } else { '.' });
+        chars.push(if self.interrupt { 'I' } else { '.' });
+        chars.push(if self.decimal { 'D' } else { '.' });
+        chars.push(if self.break_flag { 'B' } else { '.' });
+        chars.push('.');
+        chars.push(if self.overflow { 'O' } else { '.' });
+        chars.push(if self.overflow { 'N' } else { '.' });
+        chars.iter().collect()
     }
 }
 

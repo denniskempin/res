@@ -5,6 +5,7 @@ use eframe::CreationContext;
 use egui::vec2;
 use egui::Button;
 use egui::ColorImage;
+use egui::FontFamily;
 use egui::RichText;
 use egui::Rounding;
 use egui::Sense;
@@ -56,6 +57,19 @@ impl Debugger {
     pub fn right_debug_panel(&mut self, ui: &mut Ui, emulator: &System) {
         self.debug_controls(ui, emulator);
         ui.separator();
+        ui.label(RichText::new("CPU").strong());
+        let cpu = emulator.cpu();
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(format!("A {:02X}", cpu.a)).family(FontFamily::Monospace));
+            ui.separator();
+            ui.label(RichText::new(format!("X {:02X}", cpu.x)).family(FontFamily::Monospace));
+            ui.separator();
+            ui.label(RichText::new(format!("Y {:02X}", cpu.y)).family(FontFamily::Monospace));
+        });
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("Status:"));
+            ui.label(RichText::new(cpu.status_flags.pretty_print()).family(FontFamily::Monospace));
+        });
     }
 
     pub fn bottom_debug_panel(&mut self, ui: &mut Ui, emulator: &System) {
