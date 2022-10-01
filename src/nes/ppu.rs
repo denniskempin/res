@@ -296,9 +296,9 @@ impl Ppu {
     // Debug API
 
     pub fn debug_render_nametable(&self) -> ColorImage {
-        let mut image = ColorImage::new([32 * 8, 30 * 8], Color32::TRANSPARENT);
+        let mut image = ColorImage::new([64 * 8, 30 * 8], Color32::TRANSPARENT);
         for coarse_y in 0..30 {
-            for coarse_x in 0..32 {
+            for coarse_x in 0..64 {
                 let background = NametableEntry::new(self, coarse_x, coarse_y);
                 for fine_y in 0..8 {
                     for (fine_x, pixel) in background.pattern.row_pixels(self, fine_y).enumerate() {
@@ -383,12 +383,19 @@ pub struct NametableEntry {
 }
 
 impl NametableEntry {
-    pub fn new(ppu: &Ppu, coarse_x: usize, coarse_y: usize) -> NametableEntry {
-        let addr = 0x2000 + coarse_y * 0x20 + coarse_x;
+    pub fn new(ppu: &Ppu, mut coarse_x: usize, mut coarse_y: usize) -> NametableEntry {
+        let bank_x = coarse_x / 32;
+        let bank_y = coarse_y / 32;
+        let bank = bank_x + bank_y * 2;
+        coarse_x %= 32;
+        coarse_y %= 32;
+        let base_addr = 0x2000 + (0x0400 * bank);
+
+        let addr = base_addr + coarse_y * 0x20 + coarse_x;
         let nametable_value = ppu.read_ppu_memory(addr as u16);
 
         let attr_table_idx = coarse_y / 4 * 8 + coarse_x / 4;
-        let attr_byte = ppu.read_ppu_memory(0x23C0 + attr_table_idx as u16);
+        let attr_byte = ppu.read_ppu_memory((base_addr + 0x03C0 + attr_table_idx) as u16);
         let attribute = match (coarse_x % 4 / 2, coarse_y % 4 / 2) {
             (0, 0) => attr_byte & 0b11,
             (1, 0) => (attr_byte >> 2) & 0b11,

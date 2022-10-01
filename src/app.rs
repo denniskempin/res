@@ -43,7 +43,7 @@ impl EmulatorApp {
             framebuffer_texture: cc
                 .egui_ctx
                 .load_texture("Framebuffer", ColorImage::example()),
-            debug_mode: false,
+            debug_mode: true,
             debug_state: Debugger::new(cc),
         }
     }
@@ -134,6 +134,7 @@ impl eframe::App for EmulatorApp {
 
             egui::TopBottomPanel::bottom("bottom_debug_panel")
                 .resizable(false)
+                .height_range(240.0..=240.0)
                 .show(ctx, |ui| {
                     self.debug_state.bottom_debug_panel(ui, &self.emulator);
                 });

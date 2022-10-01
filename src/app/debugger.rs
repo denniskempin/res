@@ -22,7 +22,6 @@ pub struct Debugger {
 }
 
 impl Debugger {
-    /// Called once before the first frame.
     pub fn new(cc: &CreationContext<'_>) -> Self {
         Debugger {
             nametable_texture: cc.egui_ctx.load_texture("Nametable", ColorImage::example()),
@@ -55,41 +54,48 @@ impl Debugger {
     }
 
     pub fn right_debug_panel(&mut self, ui: &mut Ui, emulator: &System) {
-        ui.separator();
         self.debug_controls(ui, emulator);
         ui.separator();
-        self.palette_table(ui, emulator);
-        ui.separator();
-        ui.label(RichText::new("Nametable").strong());
-
-        self.nametable_texture
-            .set(emulator.ppu().debug_render_nametable());
-        ui.image(&self.nametable_texture, vec2(256.0, 240.0));
     }
 
-    pub fn bottom_debug_panel(&mut self, ui: &mut Ui, _emulator: &System) {
-        ui.label(RichText::new("Bottom Debug Panel").strong());
+    pub fn bottom_debug_panel(&mut self, ui: &mut Ui, emulator: &System) {
+        ui.horizontal(|ui| {
+            self.palette_table(ui, emulator);
+            ui.separator();
+
+            ui.vertical(|ui| {
+                ui.label(RichText::new("Nametable").strong());
+
+                self.nametable_texture
+                    .set(emulator.ppu().debug_render_nametable());
+                ui.image(&self.nametable_texture, vec2(420.0, 210.0));
+            });
+        });
     }
 
     fn palette_table(&self, ui: &mut Ui, emulator: &System) {
-        ui.label(RichText::new("Color Palette").strong());
-        for palette_id in 0..8 {
-            ui.columns(4, |cols| {
-                for (color_id, col) in cols.iter_mut().enumerate() {
-                    let desired_size = vec2(col.available_size().x, 16.0);
-                    let (whole_rect, response) =
-                        col.allocate_exact_size(desired_size, Sense::focusable_noninteractive());
-                    response.on_hover_text(format!("Color {color_id} of palette {palette_id}"));
+        ui.vertical(|ui| {
+            ui.set_max_width(160.0);
+            ui.label(RichText::new("Color Palette").strong());
+            for palette_id in 0..8 {
+                ui.columns(4, |cols| {
+                    for (color_id, col) in cols.iter_mut().enumerate() {
+                        let (rect, response) = col.allocate_exact_size(
+                            vec2(32.0, 24.0),
+                            Sense::focusable_noninteractive(),
+                        );
+                        response.on_hover_text(format!("Color {color_id} of palette {palette_id}"));
 
-                    let color = emulator.ppu().get_palette_entry(palette_id, color_id);
-                    col.painter().rect_filled(
-                        whole_rect,
-                        Rounding::none(),
-                        SYSTEM_PALETTE[color as usize],
-                    );
-                }
-            });
-        }
+                        let color = emulator.ppu().get_palette_entry(palette_id, color_id);
+                        col.painter().rect_filled(
+                            rect,
+                            Rounding::none(),
+                            SYSTEM_PALETTE[color as usize],
+                        );
+                    }
+                });
+            }
+        });
     }
 
     fn debug_controls(&mut self, ui: &mut Ui, emulator: &System) {
