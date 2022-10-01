@@ -4,7 +4,6 @@ pub mod cpu;
 pub mod joypad;
 pub mod ppu;
 pub mod trace;
-mod util;
 
 use std::cell::RefCell;
 use std::fs;

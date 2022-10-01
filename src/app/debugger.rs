@@ -1,4 +1,3 @@
-use std::collections::VecDeque;
 use std::fmt::Debug;
 
 use eframe::CreationContext;
@@ -11,15 +10,17 @@ use egui::Rounding;
 use egui::Sense;
 use egui::TextureHandle;
 use egui::Ui;
+use itertools::Itertools;
 
 use crate::nes::ppu::SYSTEM_PALETTE;
 use crate::nes::System;
+use crate::util::RingBuffer;
 
 pub struct Debugger {
     nametable_texture: TextureHandle,
 
     command: Option<DebugCommand>,
-    previous_states: StateStack,
+    previous_states: RingBuffer<System, 256>,
 }
 
 impl Debugger {
@@ -27,7 +28,7 @@ impl Debugger {
         Debugger {
             nametable_texture: cc.egui_ctx.load_texture("Nametable", ColorImage::example()),
             command: None,
-            previous_states: StateStack::default(),
+            previous_states: RingBuffer::default(),
         }
     }
 
@@ -59,6 +60,7 @@ impl Debugger {
         ui.separator();
         ui.label(RichText::new("CPU").strong());
         let cpu = emulator.cpu();
+
         ui.horizontal(|ui| {
             ui.label(RichText::new(format!("A {:02X}", cpu.a)).family(FontFamily::Monospace));
             ui.separator();
@@ -67,9 +69,20 @@ impl Debugger {
             ui.label(RichText::new(format!("Y {:02X}", cpu.y)).family(FontFamily::Monospace));
         });
         ui.horizontal(|ui| {
-            ui.label(RichText::new("Status:"));
+            ui.label(RichText::new("Status:").family(FontFamily::Monospace));
             ui.label(RichText::new(cpu.status_flags.pretty_print()).family(FontFamily::Monospace));
         });
+        ui.label(RichText::new(format!("Cycle: {}", cpu.cycle)).family(FontFamily::Monospace));
+        ui.label(
+            RichText::new(format!("PC: 0x{:04X}", cpu.program_counter))
+                .family(FontFamily::Monospace),
+        );
+
+        ui.label(RichText::new("Stack").strong());
+        for line in &cpu.peek_stack().chunks(8) {
+            let line_str = line.map(|s| format!("{:02X}", s)).join(" ");
+            ui.label(RichText::new(line_str).family(FontFamily::Monospace));
+        }
     }
 
     pub fn bottom_debug_panel(&mut self, ui: &mut Ui, emulator: &System) {
@@ -152,23 +165,4 @@ enum DebugCommand {
     StepBack,
     RunToNextVblankStart,
     RunToNextVblankEnd,
-}
-
-#[derive(Default)]
-pub struct StateStack {
-    stack: VecDeque<System>,
-}
-
-impl StateStack {
-    pub fn is_empty(&self) -> bool {
-        self.stack.is_empty()
-    }
-    pub fn pop(&mut self) -> System {
-        self.stack.pop_front().unwrap()
-    }
-
-    pub fn push(&mut self, system: System) {
-        self.stack.push_front(system);
-        self.stack.truncate(256);
-    }
 }

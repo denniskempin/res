@@ -289,7 +289,7 @@ impl Cpu {
         self.read(Self::STACK_ADDR + self.sp as u16)
     }
 
-    pub fn peek_stack(&mut self) -> impl Iterator<Item = u8> + '_ {
+    pub fn peek_stack(&self) -> impl Iterator<Item = u8> + '_ {
         let stack_entries = 0xFF_u16 - self.sp as u16;
         self.bus
             .peek_slice(Self::STACK_ADDR + self.sp as u16 + 1, stack_entries)

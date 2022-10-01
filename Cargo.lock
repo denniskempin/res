@@ -1783,6 +1783,7 @@ dependencies = [
  "egui",
  "getrandom",
  "image",
+ "itertools",
  "lazy_static",
  "packed_struct",
  "rand",

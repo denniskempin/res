@@ -27,6 +27,7 @@ packed_struct = "0.10"
 rand = { version = "0.8" }
 regex = "1.6"
 wasm-timer = "0.2"
+itertools = "0.10"
 
 [dev-dependencies]
 criterion = "0.3"
