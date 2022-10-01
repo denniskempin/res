@@ -51,6 +51,9 @@ impl Debugger {
         if let Some(command) = self.command {
             match command {
                 DebugCommand::Run => {
+                    if emulator.ppu().frame % 60 == 0 {
+                        self.previous_states.push(emulator.clone());
+                    }
                     emulator.execute_one_frame().unwrap();
                 }
                 DebugCommand::StepFrames(n) => {

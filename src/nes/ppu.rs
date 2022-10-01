@@ -33,6 +33,7 @@ pub struct Ppu {
     pub internal_data_buffer: u8,
     pub cycle: usize,
     pub scanline: usize,
+    pub frame: usize,
     pub oam_addr: u8,
     pub scroll: u8,
 
@@ -62,6 +63,7 @@ impl Ppu {
             internal_data_buffer: 0,
             cycle: 0,
             scanline: 0,
+            frame: 0,
             oam_addr: 0,
             scroll: 0,
 
@@ -98,6 +100,7 @@ impl Ppu {
 
             if self.scanline >= 262 {
                 self.scanline = 0;
+                self.frame += 1;
             }
 
             if self.scanline < 240 {
