@@ -12,6 +12,7 @@ use egui::TextureHandle;
 use egui::Ui;
 use itertools::Itertools;
 
+use crate::nes::cpu::Operation;
 use crate::nes::ppu::SYSTEM_PALETTE;
 use crate::nes::System;
 use crate::util::RingBuffer;
@@ -46,6 +47,14 @@ impl Debugger {
                         self.command = None
                     }
                 }
+                DebugCommand::StepInstructions(n) => {
+                    emulator.cpu.execute_one().unwrap();
+                    if n > 1 {
+                        self.command = Some(DebugCommand::StepInstructions(n - 1));
+                    } else {
+                        self.command = None
+                    }
+                }
                 DebugCommand::StepBack => {
                     *emulator = self.previous_states.pop();
                     self.command = None
@@ -58,6 +67,27 @@ impl Debugger {
     pub fn right_debug_panel(&mut self, ui: &mut Ui, emulator: &System) {
         self.debug_controls(ui, emulator);
         ui.separator();
+        self.cpu_panel(ui, emulator);
+        ui.separator();
+        self.operations_panel(ui, emulator);
+    }
+
+    pub fn bottom_debug_panel(&mut self, ui: &mut Ui, emulator: &System) {
+        ui.horizontal(|ui| {
+            self.palette_table(ui, emulator);
+            ui.separator();
+
+            ui.vertical(|ui| {
+                ui.label(RichText::new("Nametable").strong());
+
+                self.nametable_texture
+                    .set(emulator.ppu().debug_render_nametable());
+                ui.image(&self.nametable_texture, vec2(420.0, 210.0));
+            });
+        });
+    }
+
+    fn cpu_panel(&self, ui: &mut Ui, emulator: &System) {
         ui.label(RichText::new("CPU").strong());
         let cpu = emulator.cpu();
 
@@ -77,7 +107,6 @@ impl Debugger {
             RichText::new(format!("PC: 0x{:04X}", cpu.program_counter))
                 .family(FontFamily::Monospace),
         );
-
         ui.label(RichText::new("Stack").strong());
         for line in &cpu.peek_stack().chunks(8) {
             let line_str = line.map(|s| format!("{:02X}", s)).join(" ");
@@ -85,19 +114,27 @@ impl Debugger {
         }
     }
 
-    pub fn bottom_debug_panel(&mut self, ui: &mut Ui, emulator: &System) {
-        ui.horizontal(|ui| {
-            self.palette_table(ui, emulator);
-            ui.separator();
+    fn operations_panel(&self, ui: &mut Ui, emulator: &System) {
+        ui.label(RichText::new("Operations").strong());
 
-            ui.vertical(|ui| {
-                ui.label(RichText::new("Nametable").strong());
+        let last_ops = emulator.cpu().debug.last_ops.iter().take(20).rev();
+        for addr in last_ops {
+            self.operation_label(ui, *addr, emulator, false);
+        }
+        self.operation_label(ui, emulator.cpu().program_counter, emulator, true);
+        for addr in emulator.cpu().peek_next_operations(10).skip(1) {
+            self.operation_label(ui, addr, emulator, false);
+        }
+    }
 
-                self.nametable_texture
-                    .set(emulator.ppu().debug_render_nametable());
-                ui.image(&self.nametable_texture, vec2(420.0, 210.0));
-            });
-        });
+    fn operation_label(&self, ui: &mut Ui, addr: u16, emulator: &System, strong: bool) {
+        let op = Operation::peek(emulator.cpu(), addr).unwrap();
+        let op_str = format!("{:04X} {}", addr, op.format(emulator.cpu()));
+        let mut label = RichText::new(op_str).family(FontFamily::Monospace);
+        if strong {
+            label = label.strong();
+        }
+        ui.label(label);
     }
 
     fn palette_table(&self, ui: &mut Ui, emulator: &System) {
@@ -136,6 +173,10 @@ impl Debugger {
                 } else {
                     self.command = None;
                 }
+            }
+            if ui.add_enabled(paused, Button::new("Step")).clicked() {
+                self.previous_states.push(emulator.clone());
+                self.command = Some(DebugCommand::StepInstructions(1));
             }
 
             if ui.add_enabled(paused, Button::new("Step Frame")).clicked() {

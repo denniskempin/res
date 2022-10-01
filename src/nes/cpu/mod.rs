@@ -1,3 +1,4 @@
+mod cpu_debug;
 mod operations;
 
 use std::cell::RefCell;
@@ -10,6 +11,8 @@ use bincode::Decode;
 use bincode::Encode;
 pub use operations::Operation;
 use packed_struct::prelude::*;
+
+use self::cpu_debug::CpuDebug;
 
 use super::apu::Apu;
 use super::cartridge::Cartridge;
@@ -111,7 +114,10 @@ impl CpuBus {
             0x4016 => self.joypad0.cpu_bus_peek(),
             0x4017 => self.joypad1.cpu_bus_peek(),
             0x6000..=0xFFFF => self.cartridge.borrow().cpu_bus_peek(addr),
-            _ => panic!("Warning. Illegal peek from: ${:04X}", addr),
+            _ => {
+                println!("Warning. Illegal peek from: ${:04X}", addr);
+                0
+            }
         }
     }
 
@@ -212,6 +218,8 @@ pub struct Cpu {
     pub cycle: usize,
 
     pub bus: CpuBus,
+
+    pub debug: CpuDebug,
 }
 
 impl Default for Cpu {
@@ -226,6 +234,7 @@ impl Default for Cpu {
             sp: 0xFD,
             cycle: 0,
             bus: Default::default(),
+            debug: Default::default(),
         }
     }
 }
@@ -265,8 +274,18 @@ impl Cpu {
 
     fn next_operation(&mut self) -> Result<Operation> {
         let operation = Operation::load(self, self.program_counter)?;
+        self.debug.before_op(&operation);
         self.program_counter += operation.size() as u16;
         Ok(operation)
+    }
+
+    pub fn peek_next_operations(&self, count: usize) -> impl Iterator<Item = u16> + '_ {
+        let mut virtual_pc = self.program_counter;
+        (0..count).map(move |_| {
+            let op = Operation::peek(self, virtual_pc).unwrap();
+            virtual_pc += op.size() as u16;
+            op.addr
+        })
     }
 
     fn stack_push_u16(&mut self, value: u16) {

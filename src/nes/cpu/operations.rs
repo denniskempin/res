@@ -7,8 +7,9 @@ use super::StatusFlags;
 ////////////////////////////////////////////////////////////////////////////////
 // Operation
 
+#[derive(Default, Clone)]
 pub struct Operation {
-    addr: u16,
+    pub addr: u16,
     table_entry: OpCodeTableEntry,
 }
 
@@ -497,11 +498,7 @@ impl Operand for Absolute {
     }
 
     fn format(&self, cpu: &Cpu) -> String {
-        return format!(
-            " {:04X} @{:02X}",
-            self.operand_addr,
-            cpu.bus.peek(self.operand_addr)
-        );
+        return format!(" ${:04X}", self.operand_addr);
     }
 }
 
@@ -537,12 +534,7 @@ impl Operand for AbsoluteX {
     }
 
     fn format(&self, cpu: &Cpu) -> String {
-        return format!(
-            " {:04X}+X ={:04X} @{:02X}",
-            self.base_addr,
-            self.operand_addr,
-            cpu.bus.peek(self.operand_addr)
-        );
+        return format!(" {:04X}+X = ${:04X}", self.base_addr, self.operand_addr);
     }
 }
 
@@ -577,12 +569,7 @@ impl Operand for AbsoluteY {
     }
 
     fn format(&self, cpu: &Cpu) -> String {
-        return format!(
-            " {:04X}+Y ={:04X} @{:02X}",
-            self.base_addr,
-            self.operand_addr,
-            cpu.bus.peek(self.operand_addr)
-        );
+        return format!(" {:04X}+Y = ${:04X}", self.base_addr, self.operand_addr);
     }
 }
 
@@ -603,11 +590,7 @@ impl Operand for ZeroPage {
     }
 
     fn format(&self, cpu: &Cpu) -> String {
-        return format!(
-            " {:02X} @ {:02X}",
-            self.operand_addr,
-            cpu.bus.peek(self.operand_addr())
-        );
+        return format!(" $00{:02X}", self.operand_addr);
     }
 }
 
@@ -633,12 +616,7 @@ impl Operand for ZeroPageX {
     }
 
     fn format(&self, cpu: &Cpu) -> String {
-        return format!(
-            " {:02X}+X ={:04X} @ {:02X}",
-            self.base_addr,
-            self.operand_addr,
-            cpu.bus.peek(self.operand_addr)
-        );
+        return format!(" {:02X}+X = ${:04X}", self.base_addr, self.operand_addr);
     }
 }
 
@@ -664,12 +642,7 @@ impl Operand for ZeroPageY {
     }
 
     fn format(&self, cpu: &Cpu) -> String {
-        return format!(
-            " {:02X}+Y ={:04X} @ {:02X}",
-            self.base_addr,
-            self.operand_addr,
-            cpu.bus.peek(self.operand_addr)
-        );
+        return format!(" {:02X}+Y = ${:04X}", self.base_addr, self.operand_addr);
     }
 }
 
@@ -699,12 +672,7 @@ impl Operand for Relative {
     }
 
     fn format(&self, cpu: &Cpu) -> String {
-        return format!(
-            " {:+02X} ={:04X} @ {:02X}",
-            self.relative_addr,
-            self.operand_addr,
-            cpu.bus.peek(self.operand_addr)
-        );
+        return format!(" {:+02X} = ${:04X}", self.relative_addr, self.operand_addr);
     }
 }
 
@@ -740,10 +708,8 @@ impl Operand for Indirect {
 
     fn format(&self, cpu: &Cpu) -> String {
         return format!(
-            " (${:04X}) ={:04X} @ {:02X}",
-            self.indirect_addr,
-            self.operand_addr,
-            cpu.bus.peek(self.operand_addr)
+            " (${:04X}) = ${:04X}",
+            self.indirect_addr, self.operand_addr
         );
     }
 }
@@ -786,10 +752,8 @@ impl Operand for IndirectY {
 
     fn format(&self, cpu: &Cpu) -> String {
         return format!(
-            " (${:02X})+Y ={:04X} @ {:02X}",
-            self.indirect_addr,
-            self.operand_addr,
-            cpu.bus.peek(self.operand_addr)
+            " (${:02X})+Y = ${:04X}",
+            self.indirect_addr, self.operand_addr
         );
     }
 }
@@ -820,10 +784,8 @@ impl Operand for IndirectX {
 
     fn format(&self, cpu: &Cpu) -> String {
         return format!(
-            " (${:02X}+X) ={:04X} @{:02X}",
-            self.indirect_addr,
-            self.operand_addr,
-            cpu.bus.peek(self.operand_addr)
+            " (${:02X}+X) = ${:04X}",
+            self.indirect_addr, self.operand_addr
         );
     }
 }
