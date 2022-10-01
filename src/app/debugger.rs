@@ -88,11 +88,11 @@ impl Debugger {
         egui::Window::new("CPU Bus")
             .open(&mut self.inspector_is_open)
             .show(ui.ctx(), |ui| {
+                ui.style_mut().override_font_id = Some(FontId::monospace(14.0));
                 ui.add(
-                    Label::new(
-                        RichText::new("      00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F")
-                            .family(FontFamily::Monospace),
-                    )
+                    Label::new(RichText::new(
+                        "      00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F",
+                    ))
                     .wrap(false),
                 );
 
@@ -105,8 +105,6 @@ impl Debugger {
                 if let Some(location) = self.scroll_to_memory_location {
                     let coarse_location = (location / bytes_per_line as u16) as f32;
                     self.scroll_to_memory_location = None;
-                    println!("Scrolling to: {location:04X} - line: {}", coarse_location);
-
                     scroll = scroll.vertical_scroll_offset(
                         coarse_location * (row_height + ui.spacing().item_spacing.y),
                     );
@@ -117,11 +115,8 @@ impl Debugger {
                         let bytes = emulator.cpu().bus.peek_slice(addr, bytes_per_line as u16);
                         let bytes_str = bytes.map(|s| format!("{:02X}", s)).join(" ");
                         ui.add(
-                            Label::new(
-                                RichText::new(format!("{:04X}: {}", addr, bytes_str))
-                                    .family(FontFamily::Monospace),
-                            )
-                            .wrap(false),
+                            Label::new(RichText::new(format!("{:04X}: {}", addr, bytes_str)))
+                                .wrap(false),
                         );
                     }
                 });
@@ -148,25 +143,22 @@ impl Debugger {
         let cpu = emulator.cpu();
 
         ui.horizontal(|ui| {
-            ui.label(RichText::new(format!("A {:02X}", cpu.a)).family(FontFamily::Monospace));
+            ui.label(format!("A {:02X}", cpu.a));
             ui.separator();
-            ui.label(RichText::new(format!("X {:02X}", cpu.x)).family(FontFamily::Monospace));
+            ui.label(format!("X {:02X}", cpu.x));
             ui.separator();
-            ui.label(RichText::new(format!("Y {:02X}", cpu.y)).family(FontFamily::Monospace));
+            ui.label(format!("Y {:02X}", cpu.y));
         });
         ui.horizontal(|ui| {
-            ui.label(RichText::new("Status:").family(FontFamily::Monospace));
-            ui.label(RichText::new(cpu.status_flags.pretty_print()).family(FontFamily::Monospace));
+            ui.label("Status:");
+            ui.label(cpu.status_flags.pretty_print());
         });
-        ui.label(RichText::new(format!("Cycle: {}", cpu.cycle)).family(FontFamily::Monospace));
-        ui.label(
-            RichText::new(format!("PC: 0x{:04X}", cpu.program_counter))
-                .family(FontFamily::Monospace),
-        );
+        ui.label(format!("Cycle: {}", cpu.cycle));
+        ui.label(format!("PC: 0x{:04X}", cpu.program_counter));
         ui.label(RichText::new("Stack").strong());
         for line in &cpu.peek_stack().chunks(8) {
             let line_str = line.map(|s| format!("{:02X}", s)).join(" ");
-            ui.label(RichText::new(line_str).family(FontFamily::Monospace));
+            ui.label(line_str);
         }
     }
 
@@ -192,9 +184,9 @@ impl Debugger {
             } else {
                 format!("  {:04X}", addr)
             };
-            ui.label(RichText::new(addr_str).family(FontFamily::Monospace));
+            ui.label(RichText::new(addr_str));
             for part in op.format(emulator.cpu()).split(' ') {
-                let mut text = RichText::new(part).family(FontFamily::Monospace).strong();
+                let mut text = RichText::new(part).strong();
                 if part.starts_with('$') {
                     text = text.color(Color32::LIGHT_BLUE);
                     text = text.underline();
@@ -204,13 +196,12 @@ impl Debugger {
                             u16::from_str_radix(part.strip_prefix('$').unwrap(), 16).unwrap();
                         self.scroll_to_memory_location = Some(addr);
                         self.inspector_is_open = true;
-                        println!("Scroll to {addr}");
                     }
                 } else if part.starts_with('#') {
                     text = text.color(Color32::LIGHT_GREEN);
                     ui.label(text);
                 } else if part.starts_with('+') {
-                    text = text.color(Color32::LIGHT_YELLOW);
+                    text = text.color(Color32::LIGHT_RED);
                     ui.label(text);
                 } else {
                     ui.label(text);

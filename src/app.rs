@@ -8,6 +8,7 @@ use eframe::Frame;
 use egui::ColorImage;
 use egui::Context;
 use egui::DroppedFile;
+use egui::FontId;
 use egui::Image;
 use egui::InputState;
 use egui::Key;
@@ -129,6 +130,7 @@ impl eframe::App for EmulatorApp {
             egui::SidePanel::right("right_debug_panel")
                 .resizable(false)
                 .show(ctx, |ui| {
+                    ui.style_mut().override_font_id = Some(FontId::monospace(14.0));
                     self.debug_state.right_debug_panel(ui, &self.emulator);
                 });
 
@@ -136,6 +138,7 @@ impl eframe::App for EmulatorApp {
                 .resizable(false)
                 .height_range(240.0..=240.0)
                 .show(ctx, |ui| {
+                    ui.style_mut().override_font_id = Some(FontId::monospace(14.0));
                     self.debug_state.bottom_debug_panel(ui, &self.emulator);
                 });
         }
