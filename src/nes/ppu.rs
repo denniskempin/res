@@ -304,8 +304,12 @@ impl Ppu {
                     for (fine_x, pixel) in background.pattern.row_pixels(self, fine_y).enumerate() {
                         let color =
                             self.get_palette_entry(background.palette_id as usize, pixel as usize);
-                        image[(coarse_x * 8 + fine_x, coarse_y * 8 + fine_y)] =
-                            SYSTEM_PALETTE[color as usize];
+                        let rgb = if color < 64 {
+                            SYSTEM_PALETTE[color as usize]
+                        } else {
+                            Color32::RED
+                        };
+                        image[(coarse_x * 8 + fine_x, coarse_y * 8 + fine_y)] = rgb;
                     }
                 }
             }
@@ -354,7 +358,13 @@ impl Framebuffer {
             pixels: self
                 .pixels
                 .iter()
-                .map(|c| SYSTEM_PALETTE[*c as usize])
+                .map(|color| {
+                    if *color < 64 {
+                        SYSTEM_PALETTE[*color as usize]
+                    } else {
+                        Color32::RED
+                    }
+                })
                 .collect(),
         }
     }

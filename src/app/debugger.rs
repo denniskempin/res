@@ -1,13 +1,22 @@
 use std::fmt::Debug;
 
+use eframe::emath::Align;
 use eframe::CreationContext;
+use egui::text::LayoutJob;
 use egui::vec2;
 use egui::Button;
+use egui::Color32;
 use egui::ColorImage;
 use egui::FontFamily;
+use egui::FontId;
+use egui::Label;
+use egui::Rect;
 use egui::RichText;
 use egui::Rounding;
+use egui::ScrollArea;
 use egui::Sense;
+use egui::TextFormat;
+use egui::TextStyle;
 use egui::TextureHandle;
 use egui::Ui;
 use itertools::Itertools;
@@ -22,6 +31,9 @@ pub struct Debugger {
 
     command: Option<DebugCommand>,
     previous_states: RingBuffer<System, 256>,
+
+    inspector_is_open: bool,
+    scroll_to_memory_location: Option<u16>,
 }
 
 impl Debugger {
@@ -30,6 +42,8 @@ impl Debugger {
             nametable_texture: cc.egui_ctx.load_texture("Nametable", ColorImage::example()),
             command: None,
             previous_states: RingBuffer::default(),
+            scroll_to_memory_location: None,
+            inspector_is_open: false,
         }
     }
 
@@ -70,6 +84,48 @@ impl Debugger {
         self.cpu_panel(ui, emulator);
         ui.separator();
         self.operations_panel(ui, emulator);
+
+        egui::Window::new("CPU Bus")
+            .open(&mut self.inspector_is_open)
+            .show(ui.ctx(), |ui| {
+                ui.add(
+                    Label::new(
+                        RichText::new("      00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F")
+                            .family(FontFamily::Monospace),
+                    )
+                    .wrap(false),
+                );
+
+                let text_style = TextStyle::Body;
+                let row_height = ui.text_style_height(&text_style);
+                let bytes_per_line: usize = 16;
+                let num_rows = 0xFFFF / bytes_per_line;
+
+                let mut scroll = ScrollArea::vertical();
+                if let Some(location) = self.scroll_to_memory_location {
+                    let coarse_location = (location / bytes_per_line as u16) as f32;
+                    self.scroll_to_memory_location = None;
+                    println!("Scrolling to: {location:04X} - line: {}", coarse_location);
+
+                    scroll = scroll.vertical_scroll_offset(
+                        coarse_location * (row_height + ui.spacing().item_spacing.y),
+                    );
+                }
+                scroll.show_rows(ui, row_height, num_rows, |ui, row_range| {
+                    for row in row_range {
+                        let addr = (row * bytes_per_line) as u16;
+                        let bytes = emulator.cpu().bus.peek_slice(addr, bytes_per_line as u16);
+                        let bytes_str = bytes.map(|s| format!("{:02X}", s)).join(" ");
+                        ui.add(
+                            Label::new(
+                                RichText::new(format!("{:04X}: {}", addr, bytes_str))
+                                    .family(FontFamily::Monospace),
+                            )
+                            .wrap(false),
+                        );
+                    }
+                });
+            });
     }
 
     pub fn bottom_debug_panel(&mut self, ui: &mut Ui, emulator: &System) {
@@ -114,7 +170,7 @@ impl Debugger {
         }
     }
 
-    fn operations_panel(&self, ui: &mut Ui, emulator: &System) {
+    fn operations_panel(&mut self, ui: &mut Ui, emulator: &System) {
         ui.label(RichText::new("Operations").strong());
 
         let last_ops = emulator.cpu().debug.last_ops.iter().take(20).rev();
@@ -127,14 +183,40 @@ impl Debugger {
         }
     }
 
-    fn operation_label(&self, ui: &mut Ui, addr: u16, emulator: &System, strong: bool) {
+    fn operation_label(&mut self, ui: &mut Ui, addr: u16, emulator: &System, current: bool) {
         let op = Operation::peek(emulator.cpu(), addr).unwrap();
-        let op_str = format!("{:04X} {}", addr, op.format(emulator.cpu()));
-        let mut label = RichText::new(op_str).family(FontFamily::Monospace);
-        if strong {
-            label = label.strong();
-        }
-        ui.label(label);
+
+        ui.horizontal(|ui| {
+            let addr_str = if current {
+                format!("> {:04X}", addr)
+            } else {
+                format!("  {:04X}", addr)
+            };
+            ui.label(RichText::new(addr_str).family(FontFamily::Monospace));
+            for part in op.format(emulator.cpu()).split(' ') {
+                let mut text = RichText::new(part).family(FontFamily::Monospace).strong();
+                if part.starts_with('$') {
+                    text = text.color(Color32::LIGHT_BLUE);
+                    text = text.underline();
+                    let widget = ui.add(Label::new(text).sense(Sense::click()));
+                    if widget.clicked() {
+                        let addr =
+                            u16::from_str_radix(part.strip_prefix('$').unwrap(), 16).unwrap();
+                        self.scroll_to_memory_location = Some(addr);
+                        self.inspector_is_open = true;
+                        println!("Scroll to {addr}");
+                    }
+                } else if part.starts_with('#') {
+                    text = text.color(Color32::LIGHT_GREEN);
+                    ui.label(text);
+                } else if part.starts_with('+') {
+                    text = text.color(Color32::LIGHT_YELLOW);
+                    ui.label(text);
+                } else {
+                    ui.label(text);
+                }
+            }
+        });
     }
 
     fn palette_table(&self, ui: &mut Ui, emulator: &System) {
@@ -151,11 +233,12 @@ impl Debugger {
                         response.on_hover_text(format!("Color {color_id} of palette {palette_id}"));
 
                         let color = emulator.ppu().get_palette_entry(palette_id, color_id);
-                        col.painter().rect_filled(
-                            rect,
-                            Rounding::none(),
-                            SYSTEM_PALETTE[color as usize],
-                        );
+                        let rgb = if color < 64 {
+                            SYSTEM_PALETTE[color as usize]
+                        } else {
+                            Color32::RED
+                        };
+                        col.painter().rect_filled(rect, Rounding::none(), rgb);
                     }
                 });
             }
