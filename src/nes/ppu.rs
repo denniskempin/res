@@ -28,7 +28,7 @@ const FRAME_HEIGHT: usize = 30 * 8;
 pub struct Ppu {
     pub cartridge: Rc<RefCell<Cartridge>>,
     pub palette_table: [u8; 32],
-    pub vram: Vec<u8>,
+    pub vram: [u8; 0x2000],
     pub oam_data: [u8; 256],
     pub internal_data_buffer: u8,
     pub cycle: usize,
@@ -57,7 +57,7 @@ impl Ppu {
     pub fn new(cartridge: Rc<RefCell<Cartridge>>) -> Self {
         Self {
             cartridge,
-            vram: vec![0; 2048],
+            vram: [0; 0x2000],
             oam_data: [0; 256],
             palette_table: [0; 32],
             internal_data_buffer: 0,
@@ -199,12 +199,12 @@ impl Ppu {
                 }
                 chr[addr as usize]
             }
-            0x2000..=0x3FFF => self.vram[(addr - 0x2000) as usize % self.vram.len()],
+            0x2000..=0x3FFF => self.vram[(addr - 0x2000) as usize],
             _ => panic!("Invalid PPU address read {addr:04X}"),
         }
     }
 
-    pub fn write_ppu_memory(&mut self, addr: u16, value: u8) {
+    pub fn write_ppu_memory(&mut self, addr: u16, mut value: u8) {
         // Map memory addresses
         let addr = match addr {
             0x3F10 => 0x3F00,
@@ -218,8 +218,10 @@ impl Ppu {
                     chr[addr as usize] = value
                 }
             }
-            0x2000..=0x3FFF => self.vram[(addr - 0x2000) as usize % 2048] = value,
-            _ => println!("Warning: Invalid PPU address write {addr:04X}"),
+            0x2000..=0x3FFF => {
+                self.vram[(addr - 0x2000) as usize] = value;
+            }
+            _ => (),
         };
     }
 
@@ -409,10 +411,10 @@ pub struct NametableEntry {
 impl NametableEntry {
     pub fn new(ppu: &Ppu, mut coarse_x: usize, mut coarse_y: usize) -> NametableEntry {
         let bank_x = coarse_x / 32;
-        let bank_y = coarse_y / 32;
+        let bank_y = coarse_y / 30;
         let bank = bank_x + bank_y * 2;
         coarse_x %= 32;
-        coarse_y %= 32;
+        coarse_y %= 30;
         let base_addr = 0x2000 + (0x0400 * bank);
 
         let addr = base_addr + coarse_y * 0x20 + coarse_x;
