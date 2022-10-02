@@ -29,6 +29,30 @@ pub fn test_basic_program() {
 }
 
 #[test]
+pub fn test_gblargg_official_only() {
+    // Run nestest.nes and compare results against a log file collected by
+    // running the same file in the accurate Nintendulator.
+    let mut system = System::with_ines(Path::new("tests/cpu/official_only.nes")).unwrap();
+    loop {
+        system.execute_frames(60).unwrap();
+        let msg: Vec<u8> = system
+            .cpu()
+            .bus
+            .peek_slice(0x6004, 100)
+            .take_while(|c| *c != 0)
+            .collect();
+        let msg_str = String::from_utf8(msg).unwrap();
+        println!("Status: {}", msg_str.trim());
+        let status = system.cpu().bus.peek(0x6000);
+        if status != 0x80 {
+            assert_eq!(status, 0x00);
+            assert_eq!(msg_str.trim(), "All 16 tests passed");
+            break;
+        }
+    }
+}
+
+#[test]
 pub fn test_nestest() {
     // Run nestest.nes and compare results against a log file collected by
     // running the same file in the accurate Nintendulator.

@@ -192,7 +192,13 @@ impl Ppu {
 
     pub fn read_ppu_memory(&self, addr: u16) -> u8 {
         match addr {
-            0..=0x1FFF => self.cartridge.borrow().chr[addr as usize],
+            0..=0x1FFF => {
+                let chr = &self.cartridge.borrow().chr;
+                if addr as usize >= chr.len() {
+                    return 0;
+                }
+                chr[addr as usize]
+            }
             0x2000..=0x3FFF => self.vram[(addr - 0x2000) as usize % self.vram.len()],
             _ => panic!("Invalid PPU address read {addr:04X}"),
         }
@@ -206,7 +212,12 @@ impl Ppu {
         };
 
         match addr {
-            0..=0x1FFF => self.cartridge.borrow_mut().chr[addr as usize] = value,
+            0..=0x1FFF => {
+                let chr = &mut self.cartridge.borrow_mut().chr;
+                if (addr as usize) < chr.len() {
+                    chr[addr as usize] = value
+                }
+            }
             0x2000..=0x3FFF => self.vram[(addr - 0x2000) as usize % 2048] = value,
             _ => println!("Warning: Invalid PPU address write {addr:04X}"),
         };
