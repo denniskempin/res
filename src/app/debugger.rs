@@ -64,6 +64,17 @@ impl Debugger {
                         self.command = None
                     }
                 }
+                DebugCommand::StepScanlines(n) => {
+                    let current_scanline = emulator.ppu().scanline;
+                    while current_scanline == emulator.ppu().scanline {
+                        emulator.cpu.execute_one().unwrap();
+                    }
+                    if n > 1 {
+                        self.command = Some(DebugCommand::StepScanlines(n - 1));
+                    } else {
+                        self.command = None
+                    }
+                }
                 DebugCommand::StepInstructions(n) => {
                     emulator.cpu.execute_one().unwrap();
                     if n > 1 {
@@ -138,6 +149,8 @@ impl Debugger {
                     .set(emulator.ppu().debug_render_nametable());
                 ui.image(&self.nametable_texture, vec2(420.0, 210.0));
             });
+
+            self.ppu_panel(ui, emulator);
         });
     }
 
@@ -260,7 +273,13 @@ impl Debugger {
                 self.previous_states.push(emulator.clone());
                 self.command = Some(DebugCommand::StepFrames(1));
             }
-
+            if ui
+                .add_enabled(paused, Button::new("Step Scanline"))
+                .clicked()
+            {
+                self.previous_states.push(emulator.clone());
+                self.command = Some(DebugCommand::StepScanlines(1));
+            }
             if ui
                 .add_enabled(
                     paused && !self.previous_states.is_empty(),
@@ -272,6 +291,41 @@ impl Debugger {
             }
         });
     }
+
+    fn ppu_panel(&self, ui: &mut Ui, emulator: &System) {
+        ui.vertical(|ui| {
+            ui.label(RichText::new("PPU").strong());
+            let ppu = emulator.ppu();
+
+            ui.label(format!("Cycle: {}/{}", ppu.cycle, ppu.scanline));
+            ui.label("Status:");
+            let status = ppu.status_register;
+            ui.label(format!(" vblank_started: {}", status.vblank_started));
+            ui.label(format!(" sprite_zero_hit: {}", status.sprite_zero_hit));
+            ui.label(format!(" sprite_overflow: {}", status.sprite_overflow));
+            ui.label("Control:");
+            let control = ppu.control_register;
+            ui.label(format!(" generate_nmi: {}", control.generate_nmi));
+            ui.label(format!(
+                " master_slave_select: {}",
+                control.master_slave_select
+            ));
+            ui.label(format!(" sprite_size: {}", control.sprite_size));
+            ui.label(format!(
+                " background_pattern_addr: {}",
+                control.background_pattern_addr
+            ));
+            ui.label(format!(
+                " sprite_pattern_addr: {}",
+                control.sprite_pattern_addr
+            ));
+            ui.label(format!(
+                " vram_add_increment: {}",
+                control.vram_add_increment
+            ));
+            ui.label(format!(" nametable: {}", control.nametable));
+        });
+    }
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -281,6 +335,4 @@ enum DebugCommand {
     StepInstructions(u32),
     StepScanlines(u32),
     StepBack,
-    RunToNextVblankStart,
-    RunToNextVblankEnd,
 }

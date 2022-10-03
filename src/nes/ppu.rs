@@ -35,7 +35,9 @@ pub struct Ppu {
     pub scanline: usize,
     pub frame: usize,
     pub oam_addr: u8,
-    pub scroll: u8,
+    pub scroll_x: u8,
+    pub scroll_y: u8,
+    pub scroll_latch: bool,
 
     pub control_register: ControlRegister,
     pub status_register: StatusRegister,
@@ -65,7 +67,9 @@ impl Ppu {
             scanline: 0,
             frame: 0,
             oam_addr: 0,
-            scroll: 0,
+            scroll_x: 0,
+            scroll_y: 0,
+            scroll_latch: false,
 
             control_register: ControlRegister::default(),
             status_register: StatusRegister::default(),
@@ -143,9 +147,13 @@ impl Ppu {
         // Temporary buffer of pixels as (color, palette_id) pairs.
         let mut pixels = [(0_u8, 0_u8); 32 * 8];
 
+        let coarse_scroll_x = self.scroll_x / 8;
+        let fine_scroll_x = self.scroll_x % 8;
+
         // Write background pixels to buffer
         for coarse_x in 0..32 {
-            let background = NametableEntry::new(self, coarse_x, coarse_y);
+            let background =
+                NametableEntry::new(self, (coarse_x + coarse_scroll_x as usize) % 64, coarse_y);
             for (fine_x, pixel) in background.pattern.row_pixels(self, fine_y).enumerate() {
                 let screen_x = coarse_x * 8 + fine_x as usize;
                 pixels[screen_x as usize] = (pixel, background.palette_id);
@@ -261,7 +269,13 @@ impl Ppu {
         match addr {
             OAM_ADDR => self.oam_addr,
             OAM_DATA => self.oam_data[self.oam_addr as usize],
-            PPU_SCROLL => self.scroll,
+            PPU_SCROLL => {
+                if self.scroll_latch {
+                    self.scroll_x
+                } else {
+                    self.scroll_y
+                }
+            }
             CONTROL_REGISTER_ADDR => self.control_register.pack().unwrap()[0],
             STATUS_REGISTER_ADDR => self.status_register.pack().unwrap()[0],
             _ => {
@@ -289,7 +303,14 @@ impl Ppu {
             0x2001 => (),
             OAM_ADDR => self.oam_addr = value,
             OAM_DATA => self.oam_data[self.oam_addr as usize] = value,
-            PPU_SCROLL => self.scroll = value,
+            PPU_SCROLL => {
+                if !self.scroll_latch {
+                    self.scroll_x = value;
+                } else {
+                    self.scroll_y = value;
+                }
+                self.scroll_latch = !self.scroll_latch;
+            }
             CONTROL_REGISTER_ADDR => {
                 self.control_register = ControlRegister::unpack(&[value]).unwrap();
             }
@@ -556,22 +577,22 @@ impl AddressRegister {
 #[derive(PackedStruct, Encode, Decode, Clone, Debug, Default, Copy, PartialEq)]
 #[packed_struct(bit_numbering = "msb0", size_bytes = "1")]
 pub struct ControlRegister {
-    generate_nmi: bool,
-    master_slave_select: bool,
-    sprite_size: bool,
-    background_pattern_addr: bool,
-    sprite_pattern_addr: bool,
-    vram_add_increment: bool,
+    pub generate_nmi: bool,
+    pub master_slave_select: bool,
+    pub sprite_size: bool,
+    pub background_pattern_addr: bool,
+    pub sprite_pattern_addr: bool,
+    pub vram_add_increment: bool,
     #[packed_field(bits = "6..=7")]
-    nametable: u8,
+    pub nametable: u8,
 }
 
 #[derive(PackedStruct, Encode, Decode, Clone, Debug, Default, Copy, PartialEq)]
 #[packed_struct(bit_numbering = "msb0", size_bytes = "1")]
 pub struct StatusRegister {
-    vblank_started: bool,
-    sprite_zero_hit: bool,
-    sprite_overflow: bool,
+    pub vblank_started: bool,
+    pub sprite_zero_hit: bool,
+    pub sprite_overflow: bool,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
