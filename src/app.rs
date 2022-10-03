@@ -111,7 +111,6 @@ impl eframe::App for EmulatorApp {
         if !ctx.input().raw.dropped_files.is_empty() {
             self.load_dropped_file(&ctx.input().raw.dropped_files[0]);
         }
-
         self.update_keys(&ctx.input());
 
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {

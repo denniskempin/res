@@ -302,14 +302,10 @@ impl Debugger {
             let status = ppu.status_register;
             ui.label(format!(" vblank_started: {}", status.vblank_started));
             ui.label(format!(" sprite_zero_hit: {}", status.sprite_zero_hit));
-            ui.label(format!(" sprite_overflow: {}", status.sprite_overflow));
+            ui.label(format!("Scroll: {}/{}", ppu.scroll_x, ppu.scroll_y));
             ui.label("Control:");
             let control = ppu.control_register;
             ui.label(format!(" generate_nmi: {}", control.generate_nmi));
-            ui.label(format!(
-                " master_slave_select: {}",
-                control.master_slave_select
-            ));
             ui.label(format!(" sprite_size: {}", control.sprite_size));
             ui.label(format!(
                 " background_pattern_addr: {}",
@@ -323,7 +319,6 @@ impl Debugger {
                 " vram_add_increment: {}",
                 control.vram_add_increment
             ));
-            ui.label(format!(" nametable: {}", control.nametable));
         });
     }
 }

@@ -147,16 +147,18 @@ impl Ppu {
         // Temporary buffer of pixels as (color, palette_id) pairs.
         let mut pixels = [(0_u8, 0_u8); 32 * 8];
 
-        let coarse_scroll_x = self.scroll_x / 8;
-        let fine_scroll_x = self.scroll_x % 8;
+        let coarse_scroll_x = (self.scroll_x / 8) as usize;
+        let fine_scroll_x = (self.scroll_x % 8) as usize;
 
         // Write background pixels to buffer
-        for coarse_x in 0..32 {
+        for coarse_x in 0..33 {
             let background =
                 NametableEntry::new(self, (coarse_x + coarse_scroll_x as usize) % 64, coarse_y);
             for (fine_x, pixel) in background.pattern.row_pixels(self, fine_y).enumerate() {
                 let screen_x = coarse_x * 8 + fine_x as usize;
-                pixels[screen_x as usize] = (pixel, background.palette_id);
+                if screen_x >= fine_scroll_x && screen_x - fine_scroll_x < 256 {
+                    pixels[screen_x as usize - fine_scroll_x] = (pixel, background.palette_id);
+                }
             }
         }
 
