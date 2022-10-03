@@ -3,7 +3,6 @@ use std::path::PathBuf;
 
 use egui::ColorImage;
 use image::RgbaImage;
-use res::nes::ppu::Framebuffer;
 use res::nes::System;
 
 #[test]

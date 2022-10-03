@@ -497,7 +497,7 @@ impl Operand for Absolute {
         self.operand_addr
     }
 
-    fn format(&self, cpu: &Cpu) -> String {
+    fn format(&self, _cpu: &Cpu) -> String {
         return format!(" ${:04X}", self.operand_addr);
     }
 }
@@ -533,7 +533,7 @@ impl Operand for AbsoluteX {
         self.extra_write_cycle
     }
 
-    fn format(&self, cpu: &Cpu) -> String {
+    fn format(&self, _cpu: &Cpu) -> String {
         return format!(" {:04X}+X = ${:04X}", self.base_addr, self.operand_addr);
     }
 }
@@ -568,7 +568,7 @@ impl Operand for AbsoluteY {
         self.extra_write_cycle
     }
 
-    fn format(&self, cpu: &Cpu) -> String {
+    fn format(&self, _cpu: &Cpu) -> String {
         return format!(" {:04X}+Y = ${:04X}", self.base_addr, self.operand_addr);
     }
 }
@@ -589,7 +589,7 @@ impl Operand for ZeroPage {
         self.operand_addr as u16
     }
 
-    fn format(&self, cpu: &Cpu) -> String {
+    fn format(&self, _cpu: &Cpu) -> String {
         return format!(" $00{:02X}", self.operand_addr);
     }
 }
@@ -615,7 +615,7 @@ impl Operand for ZeroPageX {
         self.operand_addr
     }
 
-    fn format(&self, cpu: &Cpu) -> String {
+    fn format(&self, _cpu: &Cpu) -> String {
         return format!(" {:02X}+X = ${:04X}", self.base_addr, self.operand_addr);
     }
 }
@@ -641,7 +641,7 @@ impl Operand for ZeroPageY {
         self.operand_addr
     }
 
-    fn format(&self, cpu: &Cpu) -> String {
+    fn format(&self, _cpu: &Cpu) -> String {
         return format!(" {:02X}+Y = ${:04X}", self.base_addr, self.operand_addr);
     }
 }
@@ -671,7 +671,7 @@ impl Operand for Relative {
         self.operand_addr
     }
 
-    fn format(&self, cpu: &Cpu) -> String {
+    fn format(&self, _cpu: &Cpu) -> String {
         return format!(" {:+02X} = ${:04X}", self.relative_addr, self.operand_addr);
     }
 }
@@ -706,7 +706,7 @@ impl Operand for Indirect {
         self.operand_addr
     }
 
-    fn format(&self, cpu: &Cpu) -> String {
+    fn format(&self, _cpu: &Cpu) -> String {
         return format!(
             " (${:04X}) = ${:04X}",
             self.indirect_addr, self.operand_addr
@@ -750,7 +750,7 @@ impl Operand for IndirectY {
         self.extra_write_cycle
     }
 
-    fn format(&self, cpu: &Cpu) -> String {
+    fn format(&self, _cpu: &Cpu) -> String {
         return format!(
             " (${:02X})+Y = ${:04X}",
             self.indirect_addr, self.operand_addr
@@ -782,7 +782,7 @@ impl Operand for IndirectX {
         self.operand_addr
     }
 
-    fn format(&self, cpu: &Cpu) -> String {
+    fn format(&self, _cpu: &Cpu) -> String {
         return format!(
             " (${:02X}+X) = ${:04X}",
             self.indirect_addr, self.operand_addr

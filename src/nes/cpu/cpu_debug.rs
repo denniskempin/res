@@ -1,8 +1,8 @@
-use bincode::{Decode, Encode};
-
-use crate::util::RingBuffer;
+use bincode::Decode;
+use bincode::Encode;
 
 use super::Operation;
+use crate::util::RingBuffer;
 
 #[derive(Default, Encode, Decode, Clone)]
 pub struct CpuDebug {

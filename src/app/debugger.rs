@@ -1,21 +1,16 @@
 use std::fmt::Debug;
 
-use eframe::emath::Align;
 use eframe::CreationContext;
-use egui::text::LayoutJob;
 use egui::vec2;
 use egui::Button;
 use egui::Color32;
 use egui::ColorImage;
-use egui::FontFamily;
 use egui::FontId;
 use egui::Label;
-use egui::Rect;
 use egui::RichText;
 use egui::Rounding;
 use egui::ScrollArea;
 use egui::Sense;
-use egui::TextFormat;
 use egui::TextStyle;
 use egui::TextureHandle;
 use egui::Ui;
@@ -87,7 +82,6 @@ impl Debugger {
                     *emulator = self.previous_states.pop();
                     self.command = None
                 }
-                _ => (),
             }
         }
     }

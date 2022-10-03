@@ -214,7 +214,7 @@ impl Ppu {
         }
     }
 
-    pub fn write_ppu_memory(&mut self, addr: u16, mut value: u8) {
+    pub fn write_ppu_memory(&mut self, addr: u16, value: u8) {
         // Map memory addresses
         let addr = match addr {
             0x3F10 => 0x3F00,

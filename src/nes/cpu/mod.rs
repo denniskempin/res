@@ -2,8 +2,6 @@ mod cpu_debug;
 mod operations;
 
 use std::cell::RefCell;
-use std::fmt::Display;
-use std::fmt::Write;
 use std::rc::Rc;
 
 use anyhow::Result;
@@ -13,7 +11,6 @@ pub use operations::Operation;
 use packed_struct::prelude::*;
 
 use self::cpu_debug::CpuDebug;
-
 use super::apu::Apu;
 use super::cartridge::Cartridge;
 use super::joypad::Joypad;

@@ -1,6 +1,8 @@
-use std::collections::{vec_deque::Iter, VecDeque};
+use std::collections::vec_deque::Iter;
+use std::collections::VecDeque;
 
-use bincode::{Decode, Encode};
+use bincode::Decode;
+use bincode::Encode;
 
 #[derive(Default, Encode, Decode, Clone)]
 pub struct RingBuffer<T, const N: usize> {
