@@ -82,6 +82,24 @@ impl Debugger {
                     *emulator = self.previous_states.pop();
                     self.command = None
                 }
+                DebugCommand::StepSprite0Hit => {
+                    while emulator.ppu().status_register.sprite_zero_hit {
+                        emulator.cpu.execute_one().unwrap();
+                    }
+                    while !emulator.ppu().status_register.sprite_zero_hit {
+                        emulator.cpu.execute_one().unwrap();
+                    }
+                    self.command = None
+                }
+                DebugCommand::StepVSyncStart => {
+                    while emulator.ppu().status_register.vblank_started {
+                        emulator.cpu.execute_one().unwrap();
+                    }
+                    while !emulator.ppu().status_register.vblank_started {
+                        emulator.cpu.execute_one().unwrap();
+                    }
+                    self.command = None
+                }
             }
         }
     }
@@ -275,6 +293,21 @@ impl Debugger {
                 self.command = Some(DebugCommand::StepScanlines(1));
             }
             if ui
+                .add_enabled(paused, Button::new("Step Sprite0 hit"))
+                .clicked()
+            {
+                self.previous_states.push(emulator.clone());
+                self.command = Some(DebugCommand::StepSprite0Hit);
+            }
+            if ui
+                .add_enabled(paused, Button::new("Step VSync Start"))
+                .clicked()
+            {
+                self.previous_states.push(emulator.clone());
+                self.command = Some(DebugCommand::StepVSyncStart);
+            }
+
+            if ui
                 .add_enabled(
                     paused && !self.previous_states.is_empty(),
                     Button::new("Step Back"),
@@ -313,6 +346,7 @@ impl Debugger {
                 " vram_add_increment: {}",
                 control.vram_add_increment
             ));
+            ui.label(format!(" nametable: {}", control.nametable));
         });
     }
 }
@@ -323,5 +357,7 @@ enum DebugCommand {
     StepFrames(u32),
     StepInstructions(u32),
     StepScanlines(u32),
+    StepSprite0Hit,
+    StepVSyncStart,
     StepBack,
 }

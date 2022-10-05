@@ -140,8 +140,6 @@ impl Ppu {
 
     pub fn render_scanline(&mut self) -> bool {
         let screen_y = self.scanline as usize;
-        let coarse_y = screen_y / 8;
-        let fine_y = screen_y % 8;
         let mut sprite_0_hit = false;
 
         // Temporary buffer of pixels as (color, palette_id) pairs.
@@ -149,6 +147,10 @@ impl Ppu {
 
         let coarse_scroll_x = (self.scroll_x / 8) as usize;
         let fine_scroll_x = (self.scroll_x % 8) as usize;
+
+        let scrolled_y = self.scanline as usize + self.scroll_y as usize;
+        let coarse_y = scrolled_y / 8;
+        let fine_y = scrolled_y % 8;
 
         // Write background pixels to buffer
         for coarse_x in 0..33 {
@@ -172,10 +174,10 @@ impl Ppu {
                 }
                 let (bg_pixel, _) = pixels[screen_x as usize];
                 if bg_pixel == 0 || (pixel > 0 && !sprite.data.attr.priority) {
-                    if sprite.id == 0 {
-                        sprite_0_hit = true;
-                    }
                     pixels[screen_x as usize] = (pixel, sprite.data.attr.palette_id + 4);
+                }
+                if pixel > 0 {
+                    sprite_0_hit = true;
                 }
             }
         }
@@ -200,6 +202,14 @@ impl Ppu {
     ////////////////////////////////////////////////////////////////////////////////
     // PPU Bus
 
+    pub fn vram_addr_to_idx(&self, addr: u16) -> usize {
+        if addr < 0x2800 {
+            (addr - 0x2000) as usize
+        } else {
+            (addr - 0x2800) as usize
+        }
+    }
+
     pub fn read_ppu_memory(&self, addr: u16) -> u8 {
         match addr {
             0..=0x1FFF => {
@@ -209,7 +219,7 @@ impl Ppu {
                 }
                 chr[addr as usize]
             }
-            0x2000..=0x3FFF => self.vram[(addr - 0x2000) as usize],
+            0x2000..=0x3FFF => self.vram[self.vram_addr_to_idx(addr)],
             _ => panic!("Invalid PPU address read {addr:04X}"),
         }
     }
@@ -220,7 +230,6 @@ impl Ppu {
             0x3F10 => 0x3F00,
             addr => addr,
         };
-
         match addr {
             0..=0x1FFF => {
                 let chr = &mut self.cartridge.borrow_mut().chr;
@@ -229,7 +238,7 @@ impl Ppu {
                 }
             }
             0x2000..=0x3FFF => {
-                self.vram[(addr - 0x2000) as usize] = value;
+                self.vram[self.vram_addr_to_idx(addr)] = value;
             }
             _ => (),
         };
@@ -435,7 +444,7 @@ impl NametableEntry {
     pub fn new(ppu: &Ppu, mut coarse_x: usize, mut coarse_y: usize) -> NametableEntry {
         let bank_x = coarse_x / 32;
         let bank_y = coarse_y / 30;
-        let bank = bank_x + bank_y * 2;
+        let bank = bank_x + bank_y * 2 + ppu.control_register.nametable as usize;
         coarse_x %= 32;
         coarse_y %= 30;
         let base_addr = 0x2000 + (0x0400 * bank);
