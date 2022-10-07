@@ -1,6 +1,4 @@
 tasks:
   - name: "Serve"
-    init: yarn install && yarn run build_dev
+    init: yarn install && yarn build_dev && cargo test --no-run && cargo clippy
     command: yarn serve
-  - name: "Prebuild"
-    init: cargo test --no-run && cargo clippy
