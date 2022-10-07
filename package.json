@@ -4,6 +4,7 @@
     "version": "0.1.0",
     "scripts": {
         "build": "rimraf dist && webpack --mode production",
+        "build_dev": "rimraf dist && webpack --mode development",
         "serve": "rimraf dist && webpack-dev-server --mode development"
     },
     "devDependencies": {
