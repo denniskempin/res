@@ -2,12 +2,21 @@ use anyhow::anyhow;
 use anyhow::Result;
 use bincode::Decode;
 use bincode::Encode;
+use intbits::Bits;
+
+#[derive(Default, Encode, Decode, Clone)]
+pub enum MirroringMode {
+    #[default]
+    Horizontal,
+    Vertical,
+}
 
 #[derive(Default, Encode, Decode, Clone)]
 pub struct Cartridge {
     pub prg: Vec<u8>,
     pub prg_ram: Vec<u8>,
     pub chr: Vec<u8>,
+    pub mirroring_mode: MirroringMode,
 }
 
 impl Cartridge {
@@ -21,7 +30,13 @@ impl Cartridge {
         }
         let prg_len = raw[4] as usize * 16 * 1024;
         let chr_len = raw[5] as usize * 8 * 1024;
-        println!("Rom: {prg_len} bytes, {chr_len} bytes");
+        let flags = raw[6];
+        self.mirroring_mode = if flags.bit(0) {
+            MirroringMode::Vertical
+        } else {
+            MirroringMode::Horizontal
+        };
+        println!("Rom: {prg_len} bytes, chr: {chr_len} bytes, flags: {flags:08b}");
         let prg_start = 16;
         let prg_end = prg_start + prg_len;
         let chr_end = prg_end + chr_len;

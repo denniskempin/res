@@ -44,8 +44,8 @@ impl Default for CpuBus {
 }
 
 impl CpuBus {
-    pub fn tick(&mut self, cpu_cycles: usize) {
-        self.ppu.tick(cpu_cycles * 3);
+    pub fn advance_clock(&mut self, cpu_cycles: usize) {
+        self.ppu.advance_clock(cpu_cycles * 3);
     }
 
     pub fn poll_nmi_interrupt(&mut self) -> bool {
@@ -148,7 +148,7 @@ impl CpuBus {
         // Hack.. we should be advancing the CPU clock, but don't have access
         // to it here. Instead just advance everything else on the bus.
         // Ideally, the bus could tell the CPU how long a read/write took.
-        self.tick(512);
+        self.advance_clock(512);
     }
 }
 
@@ -248,7 +248,7 @@ impl Cpu {
 
     pub fn boot(&mut self) {
         self.cycle += 7;
-        self.bus.tick(7);
+        self.bus.advance_clock(7);
     }
 
     pub fn execute_one(&mut self) -> Result<bool> {
@@ -266,7 +266,7 @@ impl Cpu {
 
     pub fn advance_clock(&mut self, cycles: usize) {
         self.cycle += cycles;
-        self.bus.tick(cycles);
+        self.bus.advance_clock(cycles);
     }
 
     fn next_operation(&mut self) -> Result<Operation> {

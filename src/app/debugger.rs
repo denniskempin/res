@@ -329,7 +329,6 @@ impl Debugger {
             let status = ppu.status_register;
             ui.label(format!(" vblank_started: {}", status.vblank_started));
             ui.label(format!(" sprite_zero_hit: {}", status.sprite_zero_hit));
-            ui.label(format!("Scroll: {}/{}", ppu.scroll_x, ppu.scroll_y));
             ui.label("Control:");
             let control = ppu.control_register;
             ui.label(format!(" generate_nmi: {}", control.generate_nmi));
