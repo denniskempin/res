@@ -1,6 +1,6 @@
-use anyhow::Result;
-
 use super::Cpu;
+use super::ExecError;
+use super::ExecResult;
 use super::MaybeMutableCpu;
 use super::StatusFlags;
 
@@ -18,23 +18,23 @@ impl Operation {
         self.table_entry.operand_size + 1
     }
 
-    pub fn peek(cpu: &Cpu, addr: u16) -> Result<Operation> {
-        let raw_opcode = cpu.bus.peek(addr);
+    pub fn peek(cpu: &Cpu, addr: u16) -> Option<Operation> {
+        let raw_opcode = cpu.bus.peek(addr)?;
+        let table_entry = OPCODE_TABLE[raw_opcode as usize];
+        Some(Operation { addr, table_entry })
+    }
+
+    pub fn load(cpu: &mut Cpu, addr: u16) -> ExecResult<Operation> {
+        let raw_opcode = cpu.read(addr)?;
         let table_entry = OPCODE_TABLE[raw_opcode as usize];
         Ok(Operation { addr, table_entry })
     }
 
-    pub fn load(cpu: &mut Cpu, addr: u16) -> Result<Operation> {
-        let raw_opcode = cpu.read(addr);
-        let table_entry = OPCODE_TABLE[raw_opcode as usize];
-        Ok(Operation { addr, table_entry })
+    pub fn execute(&self, cpu: &mut Cpu) -> ExecResult<()> {
+        (self.table_entry.execute_fn)(cpu, self.addr)
     }
 
-    pub fn execute(&self, cpu: &mut Cpu) {
-        (self.table_entry.execute_fn)(cpu, self.addr);
-    }
-
-    pub fn format(self, cpu: &Cpu) -> String {
+    pub fn format(&self, cpu: &Cpu) -> String {
         (self.table_entry.format_fn)(cpu, self.addr)
     }
 }
@@ -48,17 +48,20 @@ macro_rules! opcode {
             code: $code,
             operand_size: $address_mode::OPERAND_SIZE,
             execute_fn: |cpu, addr| {
-                let address_mode = $address_mode::load(cpu.mutable_wrapper(), addr);
+                let address_mode = $address_mode::load(cpu.mutable_wrapper(), addr)?;
                 $method::<$address_mode>(cpu, address_mode)
             },
 
             format_fn: |cpu, addr| {
-                let address_mode = $address_mode::load(cpu.immutable_wrapper(), addr);
-                format!(
-                    "{}{}",
-                    stringify!($method).to_uppercase(),
-                    address_mode.format(cpu)
-                )
+                if let Ok(address_mode) = $address_mode::load(cpu.immutable_wrapper(), addr) {
+                    format!(
+                        "{}{}",
+                        stringify!($method).to_uppercase(),
+                        address_mode.format(cpu)
+                    )
+                } else {
+                    format!("INV")
+                }
             },
         }
     };
@@ -378,7 +381,7 @@ lazy_static! {
 struct OpCodeTableEntry {
     pub code: u8,
     pub operand_size: usize,
-    pub execute_fn: fn(cpu: &mut Cpu, addr: u16),
+    pub execute_fn: fn(cpu: &mut Cpu, addr: u16) -> ExecResult<()>,
     pub format_fn: fn(cpu: &Cpu, addr: u16) -> String,
 }
 
@@ -399,7 +402,9 @@ impl Default for OpCodeTableEntry {
 trait Operand {
     const OPERAND_SIZE: usize = 0;
 
-    fn load<T: MaybeMutableCpu>(_cpu: T, _addr: u16) -> Self;
+    fn load<T: MaybeMutableCpu>(_cpu: T, _addr: u16) -> ExecResult<Self>
+    where
+        Self: Sized;
 
     fn format(&self, cpu: &Cpu) -> String;
 
@@ -411,13 +416,13 @@ trait Operand {
         false
     }
 
-    fn load_operand(&self, cpu: &mut Cpu) -> u8 {
+    fn load_operand(&self, cpu: &mut Cpu) -> ExecResult<u8> {
         cpu.read(self.operand_addr())
     }
 
-    fn store_operand(&self, cpu: &mut Cpu, value: u8) {
+    fn store_operand(&self, cpu: &mut Cpu, value: u8) -> ExecResult<()> {
         if self.extra_write_cycle() {
-            cpu.advance_clock(1);
+            cpu.advance_clock(1)?;
         }
         cpu.write(self.operand_addr(), value)
     }
@@ -429,14 +434,14 @@ struct Immediate {
 impl Operand for Immediate {
     const OPERAND_SIZE: usize = 1;
 
-    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> Self {
-        Self {
-            operand: cpu.read_or_peek(addr + 1),
-        }
+    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> ExecResult<Self> {
+        Ok(Self {
+            operand: cpu.read_or_peek(addr + 1)?,
+        })
     }
 
-    fn load_operand(&self, _cpu: &mut Cpu) -> u8 {
-        self.operand
+    fn load_operand(&self, _cpu: &mut Cpu) -> ExecResult<u8> {
+        Ok(self.operand)
     }
 
     fn format(&self, _cpu: &Cpu) -> String {
@@ -448,11 +453,11 @@ struct Implicit {}
 impl Operand for Implicit {
     const OPERAND_SIZE: usize = 0;
 
-    fn load<T: MaybeMutableCpu>(mut cpu: T, _addr: u16) -> Self {
+    fn load<T: MaybeMutableCpu>(mut cpu: T, _addr: u16) -> ExecResult<Self> {
         // Even Implicit address modes seem to be spending an extra
         // cycle to load the operand.
-        cpu.advance_clock(1);
-        Self {}
+        cpu.advance_clock(1)?;
+        Ok(Self {})
     }
 
     fn format(&self, _cpu: &Cpu) -> String {
@@ -464,16 +469,17 @@ struct Accumulator {}
 impl Operand for Accumulator {
     const OPERAND_SIZE: usize = 0;
 
-    fn load<T: MaybeMutableCpu>(_cpu: T, _addr: u16) -> Self {
-        Self {}
+    fn load<T: MaybeMutableCpu>(_cpu: T, _addr: u16) -> ExecResult<Self> {
+        Ok(Self {})
     }
 
-    fn load_operand(&self, cpu: &mut Cpu) -> u8 {
-        cpu.a
+    fn load_operand(&self, cpu: &mut Cpu) -> ExecResult<u8> {
+        Ok(cpu.a)
     }
 
-    fn store_operand(&self, cpu: &mut Cpu, value: u8) {
+    fn store_operand(&self, cpu: &mut Cpu, value: u8) -> ExecResult<()> {
         cpu.a = value;
+        Ok(())
     }
 
     fn format(&self, _cpu: &Cpu) -> String {
@@ -487,10 +493,10 @@ struct Absolute {
 impl Operand for Absolute {
     const OPERAND_SIZE: usize = 2;
 
-    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> Self {
-        Self {
-            operand_addr: cpu.read_or_peek_u16(addr + 1),
-        }
+    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> ExecResult<Self> {
+        Ok(Self {
+            operand_addr: cpu.read_or_peek_u16(addr + 1)?,
+        })
     }
 
     fn operand_addr(&self) -> u16 {
@@ -511,18 +517,18 @@ struct AbsoluteX {
 impl Operand for AbsoluteX {
     const OPERAND_SIZE: usize = 2;
 
-    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> Self {
-        let base_addr = cpu.read_or_peek_u16(addr + 1);
+    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> ExecResult<Self> {
+        let base_addr = cpu.read_or_peek_u16(addr + 1)?;
         let operand_addr = base_addr.wrapping_add(cpu.immutable().x as u16);
         let page_cross = base_addr & 0xFF00 != operand_addr & 0xFF00;
         if page_cross {
-            cpu.advance_clock(1);
+            cpu.advance_clock(1)?;
         }
-        Self {
+        Ok(Self {
             base_addr,
             operand_addr,
             extra_write_cycle: !page_cross,
-        }
+        })
     }
 
     fn operand_addr(&self) -> u16 {
@@ -546,18 +552,18 @@ struct AbsoluteY {
 impl Operand for AbsoluteY {
     const OPERAND_SIZE: usize = 2;
 
-    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> Self {
-        let base_addr = cpu.read_or_peek_u16(addr + 1);
+    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> ExecResult<Self> {
+        let base_addr = cpu.read_or_peek_u16(addr + 1)?;
         let operand_addr = base_addr.wrapping_add(cpu.immutable().y as u16);
         let page_cross = base_addr & 0xFF00 != operand_addr & 0xFF00;
         if page_cross {
-            cpu.advance_clock(1);
+            cpu.advance_clock(1)?;
         }
-        Self {
+        Ok(Self {
             base_addr,
             operand_addr,
             extra_write_cycle: !page_cross,
-        }
+        })
     }
 
     fn operand_addr(&self) -> u16 {
@@ -579,10 +585,10 @@ struct ZeroPage {
 impl Operand for ZeroPage {
     const OPERAND_SIZE: usize = 1;
 
-    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> Self {
-        Self {
-            operand_addr: cpu.read_or_peek(addr + 1),
-        }
+    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> ExecResult<Self> {
+        Ok(Self {
+            operand_addr: cpu.read_or_peek(addr + 1)?,
+        })
     }
 
     fn operand_addr(&self) -> u16 {
@@ -601,14 +607,14 @@ struct ZeroPageX {
 impl Operand for ZeroPageX {
     const OPERAND_SIZE: usize = 1;
 
-    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> Self {
-        let base_addr = cpu.read_or_peek(addr + 1);
+    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> ExecResult<Self> {
+        let base_addr = cpu.read_or_peek(addr + 1)?;
         let operand_addr = base_addr.wrapping_add(cpu.immutable().x) as u16;
-        cpu.read_or_peek(0x00); // Fake read for one extra cycle
-        Self {
+        cpu.read_or_peek(0x00)?; // Fake read for one extra cycle
+        Ok(Self {
             base_addr,
             operand_addr,
-        }
+        })
     }
 
     fn operand_addr(&self) -> u16 {
@@ -627,14 +633,14 @@ struct ZeroPageY {
 impl Operand for ZeroPageY {
     const OPERAND_SIZE: usize = 1;
 
-    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> Self {
-        let base_addr = cpu.read_or_peek(addr + 1);
+    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> ExecResult<Self> {
+        let base_addr = cpu.read_or_peek(addr + 1)?;
         let operand_addr = base_addr.wrapping_add(cpu.immutable().y) as u16;
-        cpu.read_or_peek(0x00); // Fake read for one extra cycle
-        Self {
+        cpu.read_or_peek(0x00)?; // Fake read for one extra cycle
+        Ok(Self {
             base_addr,
             operand_addr,
-        }
+        })
     }
 
     fn operand_addr(&self) -> u16 {
@@ -653,18 +659,18 @@ struct Relative {
 impl Operand for Relative {
     const OPERAND_SIZE: usize = 1;
 
-    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> Self {
-        let relative_addr = cpu.read_or_peek(addr + 1) as i8;
+    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> ExecResult<Self> {
+        let relative_addr = cpu.read_or_peek(addr + 1)? as i8;
         let base_addr = addr + 1 + Self::OPERAND_SIZE as u16;
         let operand_addr = if relative_addr > 0 {
             base_addr.wrapping_add((relative_addr as i16).unsigned_abs())
         } else {
             base_addr.wrapping_sub((relative_addr as i16).unsigned_abs())
         };
-        Self {
+        Ok(Self {
             relative_addr,
             operand_addr,
-        }
+        })
     }
 
     fn operand_addr(&self) -> u16 {
@@ -683,23 +689,23 @@ struct Indirect {
 impl Operand for Indirect {
     const OPERAND_SIZE: usize = 2;
 
-    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> Self {
-        let indirect_addr = cpu.read_or_peek_u16(addr + 1);
+    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> ExecResult<Self> {
+        let indirect_addr = cpu.read_or_peek_u16(addr + 1)?;
         let bytes = if indirect_addr & 0x00FF == 0x00FF {
             // CPU Bug: Address wraps around inside page.
             let page = indirect_addr & 0xFF00;
-            [cpu.read_or_peek(indirect_addr), cpu.read_or_peek(page)]
+            [cpu.read_or_peek(indirect_addr)?, cpu.read_or_peek(page)?]
         } else {
             [
-                cpu.read_or_peek(indirect_addr),
-                cpu.read_or_peek(indirect_addr + 1),
+                cpu.read_or_peek(indirect_addr)?,
+                cpu.read_or_peek(indirect_addr + 1)?,
             ]
         };
         let operand_addr = u16::from_le_bytes(bytes);
-        Self {
+        Ok(Self {
             indirect_addr,
             operand_addr,
-        }
+        })
     }
 
     fn operand_addr(&self) -> u16 {
@@ -722,24 +728,24 @@ struct IndirectY {
 impl Operand for IndirectY {
     const OPERAND_SIZE: usize = 1;
 
-    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> Self {
-        let indirect_addr = cpu.read_or_peek(addr + 1);
+    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> ExecResult<Self> {
+        let indirect_addr = cpu.read_or_peek(addr + 1)?;
         let base_addr = u16::from_le_bytes([
-            cpu.read_or_peek(indirect_addr as u16),
-            cpu.read_or_peek(indirect_addr.wrapping_add(1) as u16),
+            cpu.read_or_peek(indirect_addr as u16)?,
+            cpu.read_or_peek(indirect_addr.wrapping_add(1) as u16)?,
         ]);
         let operand_addr = base_addr.wrapping_add(cpu.immutable().y as u16);
         let page_cross = base_addr & 0xFF00 != operand_addr & 0xFF00;
 
         if page_cross {
-            cpu.advance_clock(1);
+            cpu.advance_clock(1)?;
         }
 
-        Self {
+        Ok(Self {
             indirect_addr,
             operand_addr,
             extra_write_cycle: !page_cross,
-        }
+        })
     }
 
     fn operand_addr(&self) -> u16 {
@@ -765,17 +771,17 @@ struct IndirectX {
 impl Operand for IndirectX {
     const OPERAND_SIZE: usize = 1;
 
-    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> Self {
-        let indirect_addr = cpu.read_or_peek(addr + 1).wrapping_add(cpu.immutable().x);
+    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> ExecResult<Self> {
+        let indirect_addr = cpu.read_or_peek(addr + 1)?.wrapping_add(cpu.immutable().x);
         let operand_addr = u16::from_le_bytes([
-            cpu.read_or_peek(indirect_addr as u16),
-            cpu.read_or_peek(indirect_addr.wrapping_add(1) as u16),
+            cpu.read_or_peek(indirect_addr as u16)?,
+            cpu.read_or_peek(indirect_addr.wrapping_add(1) as u16)?,
         ]);
-        cpu.read_or_peek(0x00); // Fake read for extra cycle.
-        Self {
+        cpu.read_or_peek(0x00)?; // Fake read for extra cycle.
+        Ok(Self {
             indirect_addr,
             operand_addr,
-        }
+        })
     }
 
     fn operand_addr(&self) -> u16 {
@@ -798,21 +804,23 @@ pub fn update_negative_zero_flags(cpu: &mut Cpu, value: u8) {
     cpu.status_flags.negative = value & 0b1000_0000 != 0;
 }
 
-fn branch(cpu: &mut Cpu, target_addr: u16) {
+fn branch(cpu: &mut Cpu, target_addr: u16) -> ExecResult<()> {
     // Branch across pages take one more cycle
     if target_addr & 0xFF00 == cpu.program_counter & 0xFF00 {
-        cpu.advance_clock(1);
+        cpu.advance_clock(1)?;
     } else {
-        cpu.advance_clock(2);
+        cpu.advance_clock(2)?;
     }
     cpu.program_counter = target_addr;
+    Ok(())
 }
 
-fn pop_status_flags(cpu: &mut Cpu) {
-    let mut value = StatusFlags::from_bits(cpu.stack_pop());
+fn pop_status_flags(cpu: &mut Cpu) -> ExecResult<()> {
+    let mut value = StatusFlags::from_bits(cpu.stack_pop()?);
     value.break_flag = cpu.status_flags.break_flag;
     value.unused = true;
     cpu.status_flags = value;
+    Ok(())
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -820,200 +828,222 @@ fn pop_status_flags(cpu: &mut Cpu) {
 
 // J** (Jump) / RT* (Return)
 
-fn jmp<AM: Operand>(cpu: &mut Cpu, operand: AM) {
+fn jmp<AM: Operand>(cpu: &mut Cpu, operand: AM) -> ExecResult<()> {
     cpu.program_counter = operand.operand_addr();
+    Ok(())
 }
 
-fn jsr<AM: Operand>(cpu: &mut Cpu, operand: AM) {
-    cpu.stack_push_u16(cpu.program_counter - 1);
+fn jsr<AM: Operand>(cpu: &mut Cpu, operand: AM) -> ExecResult<()> {
+    cpu.stack_push_u16(cpu.program_counter - 1)?;
     cpu.program_counter = operand.operand_addr();
-    cpu.advance_clock(1);
+    cpu.advance_clock(1)
 }
 
-fn rts<AM: Operand>(cpu: &mut Cpu, _operand: AM) {
-    cpu.program_counter = cpu.stack_pop_u16() + 1;
-    cpu.advance_clock(2);
+fn rts<AM: Operand>(cpu: &mut Cpu, _operand: AM) -> ExecResult<()> {
+    cpu.program_counter = cpu.stack_pop_u16()? + 1;
+    cpu.advance_clock(2)
 }
 
-fn rti<AM: Operand>(cpu: &mut Cpu, _operand: AM) {
-    pop_status_flags(cpu);
-    cpu.program_counter = cpu.stack_pop_u16();
-    cpu.advance_clock(1);
+fn rti<AM: Operand>(cpu: &mut Cpu, _operand: AM) -> ExecResult<()> {
+    pop_status_flags(cpu)?;
+    cpu.program_counter = cpu.stack_pop_u16()?;
+    cpu.advance_clock(1)
 }
 
 // ST* (Store)
 
-fn sta<AM: Operand>(cpu: &mut Cpu, operand: AM) {
-    operand.store_operand(cpu, cpu.a);
+fn sta<AM: Operand>(cpu: &mut Cpu, operand: AM) -> ExecResult<()> {
+    operand.store_operand(cpu, cpu.a)
 }
 
-fn stx<AM: Operand>(cpu: &mut Cpu, operand: AM) {
-    operand.store_operand(cpu, cpu.x);
+fn stx<AM: Operand>(cpu: &mut Cpu, operand: AM) -> ExecResult<()> {
+    operand.store_operand(cpu, cpu.x)
 }
 
-fn sty<AM: Operand>(cpu: &mut Cpu, operand: AM) {
-    operand.store_operand(cpu, cpu.y);
+fn sty<AM: Operand>(cpu: &mut Cpu, operand: AM) -> ExecResult<()> {
+    operand.store_operand(cpu, cpu.y)
 }
 
 // LD* (Load)
 
-fn lda<AM: Operand>(cpu: &mut Cpu, operand: AM) {
-    cpu.a = operand.load_operand(cpu);
+fn lda<AM: Operand>(cpu: &mut Cpu, operand: AM) -> ExecResult<()> {
+    cpu.a = operand.load_operand(cpu)?;
     update_negative_zero_flags(cpu, cpu.a);
+    Ok(())
 }
 
-fn ldy<AM: Operand>(cpu: &mut Cpu, operand: AM) {
-    cpu.y = operand.load_operand(cpu);
+fn ldy<AM: Operand>(cpu: &mut Cpu, operand: AM) -> ExecResult<()> {
+    cpu.y = operand.load_operand(cpu)?;
     update_negative_zero_flags(cpu, cpu.y);
+    Ok(())
 }
 
-fn ldx<AM: Operand>(cpu: &mut Cpu, operand: AM) {
-    cpu.x = operand.load_operand(cpu);
+fn ldx<AM: Operand>(cpu: &mut Cpu, operand: AM) -> ExecResult<()> {
+    cpu.x = operand.load_operand(cpu)?;
     update_negative_zero_flags(cpu, cpu.x);
+    Ok(())
 }
 
 // IN* (Increment)
 
-fn inc<AM: Operand>(cpu: &mut Cpu, operand: AM) {
-    let value = operand.load_operand(cpu).wrapping_add(1);
-    operand.store_operand(cpu, value);
+fn inc<AM: Operand>(cpu: &mut Cpu, operand: AM) -> ExecResult<()> {
+    let value = operand.load_operand(cpu)?.wrapping_add(1);
+    operand.store_operand(cpu, value)?;
     update_negative_zero_flags(cpu, value);
-    cpu.advance_clock(1);
+    cpu.advance_clock(1)
 }
 
-fn inx<AM: Operand>(cpu: &mut Cpu, _operand: AM) {
+fn inx<AM: Operand>(cpu: &mut Cpu, _operand: AM) -> ExecResult<()> {
     cpu.x = cpu.x.wrapping_add(1);
     update_negative_zero_flags(cpu, cpu.x);
+    Ok(())
 }
 
-fn iny<AM: Operand>(cpu: &mut Cpu, _operand: AM) {
+fn iny<AM: Operand>(cpu: &mut Cpu, _operand: AM) -> ExecResult<()> {
     cpu.y = cpu.y.wrapping_add(1);
     update_negative_zero_flags(cpu, cpu.y);
+    Ok(())
 }
 
 // DE* (Decrement)
 
-fn dec<AM: Operand>(cpu: &mut Cpu, operand: AM) {
-    let value = operand.load_operand(cpu).wrapping_sub(1);
-    operand.store_operand(cpu, value);
+fn dec<AM: Operand>(cpu: &mut Cpu, operand: AM) -> ExecResult<()> {
+    let value = operand.load_operand(cpu)?.wrapping_sub(1);
+    operand.store_operand(cpu, value)?;
     update_negative_zero_flags(cpu, value);
-    cpu.advance_clock(1);
+    cpu.advance_clock(1)
 }
 
-fn dex<AM: Operand>(cpu: &mut Cpu, _operand: AM) {
+fn dex<AM: Operand>(cpu: &mut Cpu, _operand: AM) -> ExecResult<()> {
     cpu.x = cpu.x.wrapping_sub(1);
     update_negative_zero_flags(cpu, cpu.x);
+    Ok(())
 }
 
-fn dey<AM: Operand>(cpu: &mut Cpu, _operand: AM) {
+fn dey<AM: Operand>(cpu: &mut Cpu, _operand: AM) -> ExecResult<()> {
     cpu.y = cpu.y.wrapping_sub(1);
     update_negative_zero_flags(cpu, cpu.y);
+    Ok(())
 }
 
 // SE* / CL* (Set / clear status bits)
 
-fn sed<AM: Operand>(cpu: &mut Cpu, _operand: AM) {
+fn sed<AM: Operand>(cpu: &mut Cpu, _operand: AM) -> ExecResult<()> {
     cpu.status_flags.decimal = true;
+    Ok(())
 }
 
-fn cld<AM: Operand>(cpu: &mut Cpu, _operand: AM) {
+fn cld<AM: Operand>(cpu: &mut Cpu, _operand: AM) -> ExecResult<()> {
     cpu.status_flags.decimal = false;
+    Ok(())
 }
 
-fn sec<AM: Operand>(cpu: &mut Cpu, _operand: AM) {
+fn sec<AM: Operand>(cpu: &mut Cpu, _operand: AM) -> ExecResult<()> {
     cpu.status_flags.carry = true;
+    Ok(())
 }
 
-fn clc<AM: Operand>(cpu: &mut Cpu, _operand: AM) {
+fn clc<AM: Operand>(cpu: &mut Cpu, _operand: AM) -> ExecResult<()> {
     cpu.status_flags.carry = false;
+    Ok(())
 }
 
-fn clv<AM: Operand>(cpu: &mut Cpu, _operand: AM) {
+fn clv<AM: Operand>(cpu: &mut Cpu, _operand: AM) -> ExecResult<()> {
     cpu.status_flags.overflow = false;
+    Ok(())
 }
 
-fn cli<AM: Operand>(cpu: &mut Cpu, _operand: AM) {
+fn cli<AM: Operand>(cpu: &mut Cpu, _operand: AM) -> ExecResult<()> {
     cpu.status_flags.interrupt = false;
+    Ok(())
 }
 
 // B** (Branch)
 
-fn bcs<AM: Operand>(cpu: &mut Cpu, operand: AM) {
+fn bcs<AM: Operand>(cpu: &mut Cpu, operand: AM) -> ExecResult<()> {
     if cpu.status_flags.carry {
-        branch(cpu, operand.operand_addr());
+        branch(cpu, operand.operand_addr())?;
     }
+    Ok(())
 }
 
-fn bcc<AM: Operand>(cpu: &mut Cpu, operand: AM) {
+fn bcc<AM: Operand>(cpu: &mut Cpu, operand: AM) -> ExecResult<()> {
     if !cpu.status_flags.carry {
-        branch(cpu, operand.operand_addr());
+        branch(cpu, operand.operand_addr())?;
     }
+    Ok(())
 }
 
-fn beq<AM: Operand>(cpu: &mut Cpu, operand: AM) {
+fn beq<AM: Operand>(cpu: &mut Cpu, operand: AM) -> ExecResult<()> {
     if cpu.status_flags.zero {
-        branch(cpu, operand.operand_addr());
+        branch(cpu, operand.operand_addr())?;
     }
+    Ok(())
 }
 
-fn bne<AM: Operand>(cpu: &mut Cpu, operand: AM) {
+fn bne<AM: Operand>(cpu: &mut Cpu, operand: AM) -> ExecResult<()> {
     if !cpu.status_flags.zero {
-        branch(cpu, operand.operand_addr());
+        branch(cpu, operand.operand_addr())?;
     }
+    Ok(())
 }
 
-fn bmi<AM: Operand>(cpu: &mut Cpu, operand: AM) {
+fn bmi<AM: Operand>(cpu: &mut Cpu, operand: AM) -> ExecResult<()> {
     if cpu.status_flags.negative {
-        branch(cpu, operand.operand_addr());
+        branch(cpu, operand.operand_addr())?;
     }
+    Ok(())
 }
 
-fn bpl<AM: Operand>(cpu: &mut Cpu, operand: AM) {
+fn bpl<AM: Operand>(cpu: &mut Cpu, operand: AM) -> ExecResult<()> {
     if !cpu.status_flags.negative {
-        branch(cpu, operand.operand_addr());
+        branch(cpu, operand.operand_addr())?;
     }
+    Ok(())
 }
 
-fn bvs<AM: Operand>(cpu: &mut Cpu, operand: AM) {
+fn bvs<AM: Operand>(cpu: &mut Cpu, operand: AM) -> ExecResult<()> {
     if cpu.status_flags.overflow {
-        branch(cpu, operand.operand_addr());
+        branch(cpu, operand.operand_addr())?;
     }
+    Ok(())
 }
 
-fn bvc<AM: Operand>(cpu: &mut Cpu, operand: AM) {
+fn bvc<AM: Operand>(cpu: &mut Cpu, operand: AM) -> ExecResult<()> {
     if !cpu.status_flags.overflow {
-        branch(cpu, operand.operand_addr());
+        branch(cpu, operand.operand_addr())?;
     }
+    Ok(())
 }
 
 // PH* (Push), PL* (Pull)
 
-fn pha<AM: Operand>(cpu: &mut Cpu, _operand: AM) {
-    cpu.stack_push(cpu.a);
+fn pha<AM: Operand>(cpu: &mut Cpu, _operand: AM) -> ExecResult<()> {
+    cpu.stack_push(cpu.a)
 }
 
-fn php<AM: Operand>(cpu: &mut Cpu, _operand: AM) {
+fn php<AM: Operand>(cpu: &mut Cpu, _operand: AM) -> ExecResult<()> {
     let mut value = cpu.status_flags;
     value.break_flag = true;
-    cpu.stack_push(value.bits());
+    cpu.stack_push(value.bits())
 }
 
-fn pla<AM: Operand>(cpu: &mut Cpu, _operand: AM) {
-    cpu.a = cpu.stack_pop();
+fn pla<AM: Operand>(cpu: &mut Cpu, _operand: AM) -> ExecResult<()> {
+    cpu.a = cpu.stack_pop()?;
     update_negative_zero_flags(cpu, cpu.a);
-    cpu.advance_clock(1);
+    cpu.advance_clock(1)
 }
 
-fn plp<AM: Operand>(cpu: &mut Cpu, _operand: AM) {
-    pop_status_flags(cpu);
-    cpu.advance_clock(1);
+fn plp<AM: Operand>(cpu: &mut Cpu, _operand: AM) -> ExecResult<()> {
+    pop_status_flags(cpu)?;
+    cpu.advance_clock(1)
 }
 
 // add / sub
 
-fn adc<AM: Operand>(cpu: &mut Cpu, operand: AM) {
+fn adc<AM: Operand>(cpu: &mut Cpu, operand: AM) -> ExecResult<()> {
     let carry = cpu.status_flags.carry as u16;
-    let value = operand.load_operand(cpu);
+    let value = operand.load_operand(cpu)?;
     let result = cpu.a as u16 + value as u16 + carry;
 
     // TODO: Learn the details behind the C and V flags and how they differ.
@@ -1021,11 +1051,12 @@ fn adc<AM: Operand>(cpu: &mut Cpu, operand: AM) {
     cpu.status_flags.overflow = (value ^ result as u8) & (result as u8 ^ cpu.a) & 0x80 != 0;
     cpu.a = result as u8;
     update_negative_zero_flags(cpu, cpu.a);
+    Ok(())
 }
 
-fn sbc<AM: Operand>(cpu: &mut Cpu, operand: AM) {
+fn sbc<AM: Operand>(cpu: &mut Cpu, operand: AM) -> ExecResult<()> {
     let carry = cpu.status_flags.carry as u16;
-    let value = (operand.load_operand(cpu) as i8)
+    let value = (operand.load_operand(cpu)? as i8)
         .wrapping_neg()
         .wrapping_sub(1) as u8;
     let result = cpu.a as u16 + value as u16 + carry;
@@ -1034,138 +1065,157 @@ fn sbc<AM: Operand>(cpu: &mut Cpu, operand: AM) {
     cpu.status_flags.overflow = (value ^ result as u8) & (result as u8 ^ cpu.a) & 0x80 != 0;
     cpu.a = result as u8;
     update_negative_zero_flags(cpu, cpu.a);
+    Ok(())
 }
 
 // Bit-wise operations
 
-fn and<AM: Operand>(cpu: &mut Cpu, operand: AM) {
-    cpu.a &= operand.load_operand(cpu);
+fn and<AM: Operand>(cpu: &mut Cpu, operand: AM) -> ExecResult<()> {
+    cpu.a &= operand.load_operand(cpu)?;
     update_negative_zero_flags(cpu, cpu.a);
+    Ok(())
 }
 
-fn ora<AM: Operand>(cpu: &mut Cpu, operand: AM) {
-    cpu.a |= operand.load_operand(cpu);
+fn ora<AM: Operand>(cpu: &mut Cpu, operand: AM) -> ExecResult<()> {
+    cpu.a |= operand.load_operand(cpu)?;
     update_negative_zero_flags(cpu, cpu.a);
+    Ok(())
 }
 
-fn eor<AM: Operand>(cpu: &mut Cpu, operand: AM) {
-    cpu.a ^= operand.load_operand(cpu);
+fn eor<AM: Operand>(cpu: &mut Cpu, operand: AM) -> ExecResult<()> {
+    cpu.a ^= operand.load_operand(cpu)?;
     update_negative_zero_flags(cpu, cpu.a);
+    Ok(())
 }
 
 // C** (Compare)
 
-fn cmp<AM: Operand>(cpu: &mut Cpu, operand: AM) {
-    let (value, overflow) = cpu.a.overflowing_sub(operand.load_operand(cpu));
+fn cmp<AM: Operand>(cpu: &mut Cpu, operand: AM) -> ExecResult<()> {
+    let (value, overflow) = cpu.a.overflowing_sub(operand.load_operand(cpu)?);
     update_negative_zero_flags(cpu, value);
     cpu.status_flags.carry = !overflow;
+    Ok(())
 }
 
-fn cpx<AM: Operand>(cpu: &mut Cpu, operand: AM) {
-    let (value, overflow) = cpu.x.overflowing_sub(operand.load_operand(cpu));
+fn cpx<AM: Operand>(cpu: &mut Cpu, operand: AM) -> ExecResult<()> {
+    let (value, overflow) = cpu.x.overflowing_sub(operand.load_operand(cpu)?);
     update_negative_zero_flags(cpu, value);
     cpu.status_flags.carry = !overflow;
+    Ok(())
 }
 
-fn cpy<AM: Operand>(cpu: &mut Cpu, operand: AM) {
-    let (value, overflow) = cpu.y.overflowing_sub(operand.load_operand(cpu));
+fn cpy<AM: Operand>(cpu: &mut Cpu, operand: AM) -> ExecResult<()> {
+    let (value, overflow) = cpu.y.overflowing_sub(operand.load_operand(cpu)?);
     update_negative_zero_flags(cpu, value);
     cpu.status_flags.carry = !overflow;
+    Ok(())
 }
 
 // Shifts
 
-fn lsr<AM: Operand>(cpu: &mut Cpu, operand: AM) {
-    let value = operand.load_operand(cpu);
+fn lsr<AM: Operand>(cpu: &mut Cpu, operand: AM) -> ExecResult<()> {
+    let value = operand.load_operand(cpu)?;
     let (result, _) = value.overflowing_shr(1);
-    operand.store_operand(cpu, result);
+    operand.store_operand(cpu, result)?;
     update_negative_zero_flags(cpu, result);
     cpu.status_flags.carry = (value & 0x01) != 0;
-    cpu.advance_clock(1);
+    cpu.advance_clock(1)
 }
 
-fn asl<AM: Operand>(cpu: &mut Cpu, operand: AM) {
-    let value = operand.load_operand(cpu);
+fn asl<AM: Operand>(cpu: &mut Cpu, operand: AM) -> ExecResult<()> {
+    let value = operand.load_operand(cpu)?;
     let (result, _) = value.overflowing_shl(1);
-    operand.store_operand(cpu, result);
+    operand.store_operand(cpu, result)?;
     update_negative_zero_flags(cpu, result);
     cpu.status_flags.carry = (value & 0x80) != 0;
-    cpu.advance_clock(1);
+    cpu.advance_clock(1)
 }
 
-fn ror<AM: Operand>(cpu: &mut Cpu, operand: AM) {
-    let operand2 = operand.load_operand(cpu);
+fn ror<AM: Operand>(cpu: &mut Cpu, operand: AM) -> ExecResult<()> {
+    let operand2 = operand.load_operand(cpu)?;
     let (mut result, _) = operand2.overflowing_shr(1);
     if cpu.status_flags.carry {
         result |= 0b1000_0000;
     }
-    operand.store_operand(cpu, result);
+    operand.store_operand(cpu, result)?;
     update_negative_zero_flags(cpu, result);
     cpu.status_flags.carry = (operand2 & 0x01) != 0;
-    cpu.advance_clock(1);
+    cpu.advance_clock(1)
 }
 
-fn rol<AM: Operand>(cpu: &mut Cpu, operand: AM) {
-    let operand2 = operand.load_operand(cpu);
+fn rol<AM: Operand>(cpu: &mut Cpu, operand: AM) -> ExecResult<()> {
+    let operand2 = operand.load_operand(cpu)?;
     let (mut result, _) = operand2.overflowing_shl(1);
     if cpu.status_flags.carry {
         result |= 0b0000_0001;
     }
-    operand.store_operand(cpu, result);
+    operand.store_operand(cpu, result)?;
     update_negative_zero_flags(cpu, result);
     cpu.status_flags.carry = (operand2 & 0x80) != 0;
-    cpu.advance_clock(1);
+    cpu.advance_clock(1)
 }
 
 // Register Transfers
 
-fn txa<AM: Operand>(cpu: &mut Cpu, _operand: AM) {
+fn txa<AM: Operand>(cpu: &mut Cpu, _operand: AM) -> ExecResult<()> {
     cpu.a = cpu.x;
     update_negative_zero_flags(cpu, cpu.a);
+    Ok(())
 }
 
-fn tax<AM: Operand>(cpu: &mut Cpu, _operand: AM) {
+fn tax<AM: Operand>(cpu: &mut Cpu, _operand: AM) -> ExecResult<()> {
     cpu.x = cpu.a;
     update_negative_zero_flags(cpu, cpu.x);
+    Ok(())
 }
 
-fn tay<AM: Operand>(cpu: &mut Cpu, _operand: AM) {
+fn tay<AM: Operand>(cpu: &mut Cpu, _operand: AM) -> ExecResult<()> {
     cpu.y = cpu.a;
     update_negative_zero_flags(cpu, cpu.y);
+    Ok(())
 }
 
-fn tya<AM: Operand>(cpu: &mut Cpu, _operand: AM) {
+fn tya<AM: Operand>(cpu: &mut Cpu, _operand: AM) -> ExecResult<()> {
     cpu.a = cpu.y;
     update_negative_zero_flags(cpu, cpu.a);
+    Ok(())
 }
 
-fn tsx<AM: Operand>(cpu: &mut Cpu, _operand: AM) {
+fn tsx<AM: Operand>(cpu: &mut Cpu, _operand: AM) -> ExecResult<()> {
     cpu.x = cpu.sp;
     update_negative_zero_flags(cpu, cpu.x);
+    Ok(())
 }
 
-fn txs<AM: Operand>(cpu: &mut Cpu, _operand: AM) {
+fn txs<AM: Operand>(cpu: &mut Cpu, _operand: AM) -> ExecResult<()> {
     cpu.sp = cpu.x;
+    Ok(())
 }
 
 // Misc Operations
 
-fn bit<AM: Operand>(cpu: &mut Cpu, operand: AM) {
-    let value = operand.load_operand(cpu);
+fn bit<AM: Operand>(cpu: &mut Cpu, operand: AM) -> ExecResult<()> {
+    let value = operand.load_operand(cpu)?;
     let flags = StatusFlags::from_bits(value);
     cpu.status_flags.negative = flags.negative;
     cpu.status_flags.overflow = flags.overflow;
     cpu.status_flags.zero = (value & cpu.a) == 0;
+    Ok(())
 }
 
-fn hlt<AM: Operand>(cpu: &mut Cpu, _operand: AM) {
+fn hlt<AM: Operand>(cpu: &mut Cpu, _operand: AM) -> ExecResult<()> {
     cpu.halt = true;
+    Ok(())
 }
 
-fn sei<AM: Operand>(_cpu: &mut Cpu, _operand: AM) {}
+fn sei<AM: Operand>(_cpu: &mut Cpu, _operand: AM) -> ExecResult<()> {
+    Ok(())
+}
 
-fn nop<AM: Operand>(_cpu: &mut Cpu, _operand: AM) {}
+fn nop<AM: Operand>(_cpu: &mut Cpu, _operand: AM) -> ExecResult<()> {
+    Ok(())
+}
 
-fn ill<AM: Operand>(cpu: &mut Cpu, operand: AM) {
-    panic!("Illegal Opcode {:02X}", operand.load_operand(cpu));
+fn ill<AM: Operand>(_cpu: &mut Cpu, _operand: AM) -> ExecResult<()> {
+    Err(ExecError::IllegalOpcode)
 }

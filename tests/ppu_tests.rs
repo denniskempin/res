@@ -38,7 +38,7 @@ pub fn test_alter_ego_nametable() {
 
     system.execute_frames(60).unwrap();
     compare_to_golden(
-        &into_rgba(&system.ppu().debug_render_nametable()),
+        &into_rgba(&system.ppu().debug_render_nametable().unwrap()),
         "test_alter_ego_nametable_0",
     );
 }

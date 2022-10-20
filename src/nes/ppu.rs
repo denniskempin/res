@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::fmt::Formatter;
 use std::rc::Rc;
 
 use bincode::Decode;
@@ -8,8 +9,27 @@ use egui::ColorImage;
 use image::RgbaImage;
 use intbits::Bits;
 use packed_struct::prelude::*;
+use thiserror::Error;
 
 use super::cartridge::Cartridge;
+
+#[derive(Error)]
+pub enum PpuError {
+    #[error("Invalid read from 0x{0:04X}")]
+    InvalidBusRead(u16),
+    #[error("Invalid write to 0x{0:04X}")]
+    InvalidBusWrite(u16),
+    #[error("Invalid peek from 0x{0:04X}")]
+    InvalidBusPeek(u16),
+}
+
+impl std::fmt::Debug for PpuError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(f, "{}", self)
+    }
+}
+
+pub type PpuResult<T> = std::result::Result<T, PpuError>;
 
 const CONTROL_REGISTER_ADDR: u16 = 0x2000;
 const MASK_REGISTER_ADDR: u16 = 0x2001;
@@ -88,13 +108,14 @@ impl Ppu {
         }
     }
 
-    pub fn advance_clock(&mut self, cycles: usize) {
+    pub fn advance_clock(&mut self, cycles: usize) -> PpuResult<()> {
         for _ in 0..cycles {
-            self.tick();
+            self.tick()?;
         }
+        Ok(())
     }
 
-    fn tick(&mut self) {
+    fn tick(&mut self) -> PpuResult<()> {
         self.cycle += 1;
         if self.cycle == 341 {
             self.cycle = 0;
@@ -132,22 +153,25 @@ impl Ppu {
             }
             if self.cycle == 257 {
                 self.v_register.set_coarse_x(self.t_register.coarse_x());
-                self.v_register.set_nametable_x(self.t_register.nametable_x());
+                self.v_register
+                    .set_nametable_x(self.t_register.nametable_x());
             }
             if self.scanline == 261 && self.cycle == 304 {
                 self.v_register.set_coarse_y(self.t_register.coarse_y());
                 self.v_register.set_fine_y(self.t_register.fine_y());
-                self.v_register.set_nametable_y(self.t_register.nametable_y());
+                self.v_register
+                    .set_nametable_y(self.t_register.nametable_y());
             }
         }
         // Shortcut: Render the whole scanline at once at cycle 257.
         if self.scanline < 240 && self.cycle == 257 {
-            let sprite_0_hit = self.render_scanline();
+            let sprite_0_hit = self.render_scanline()?;
             if sprite_0_hit {
                 self.status_register.sprite_zero_hit = true;
             }
         }
 
+        Ok(())
     }
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -167,12 +191,12 @@ impl Ppu {
             .rev()
     }
 
-    pub fn get_nametable_entry(&self, coarse_x: usize, coarse_y: usize) -> usize {
+    pub fn get_nametable_entry(&self, coarse_x: usize, coarse_y: usize) -> PpuResult<usize> {
         let addr = 0x2000 + coarse_y * 0x20 + coarse_x;
-        self.read_ppu_memory(addr as u16) as usize
+        Ok(self.read_ppu_memory(addr as u16)? as usize)
     }
 
-    pub fn render_scanline(&mut self) -> bool {
+    pub fn render_scanline(&mut self) -> PpuResult<bool> {
         let screen_y = self.scanline as usize;
         let mut sprite_0_hit = false;
 
@@ -184,11 +208,18 @@ impl Ppu {
             // Create a temporary copy of the v_register since we are drawing a whole scanline
             let mut addr = self.v_register.clone();
             for coarse_x in 0..33 {
-                let background = NametableEntry::new(self, &addr);
-                for (fine_x, pixel) in background.pattern.row_pixels(self, addr.fine_y() as usize).enumerate() {
+                let background = NametableEntry::new(self, &addr)?;
+                for (fine_x, pixel) in background
+                    .pattern
+                    .row_pixels(self, addr.fine_y() as usize)?
+                    .enumerate()
+                {
                     let screen_x = coarse_x * 8 + fine_x as usize;
-                    if screen_x >= self.fine_scroll_x as usize && screen_x - (self.fine_scroll_x as usize) < 256 {
-                        pixels[screen_x as usize - self.fine_scroll_x as usize] = (pixel, background.palette_id);
+                    if screen_x >= self.fine_scroll_x as usize
+                        && screen_x - (self.fine_scroll_x as usize) < 256
+                    {
+                        pixels[screen_x as usize - self.fine_scroll_x as usize] =
+                            (pixel, background.palette_id);
                     }
                 }
                 addr.increment_x();
@@ -199,7 +230,7 @@ impl Ppu {
         if self.mask_register.show_sprites {
             for sprite in self.collect_sprites_on_scanline(self.scanline) {
                 let sprite_row = screen_y - sprite.data.y as usize;
-                for (fine_x, pixel) in sprite.row_pixels(self, sprite_row).enumerate() {
+                for (fine_x, pixel) in sprite.row_pixels(self, sprite_row)?.enumerate() {
                     let screen_x = sprite.data.x as usize + fine_x as usize;
                     if screen_x >= 32 * 8 {
                         break;
@@ -218,12 +249,12 @@ impl Ppu {
         // Convert into RGBA and write into framebuffer
         for (screen_x, (color, palette)) in pixels.into_iter().enumerate() {
             self.framebuffer[(screen_x, screen_y)] =
-                self.get_palette_entry(palette as usize, color as usize);
+                self.get_palette_entry(palette as usize, color as usize)?;
         }
-        sprite_0_hit
+        Ok(sprite_0_hit)
     }
 
-    pub fn get_palette_entry(&self, palette_id: usize, entry: usize) -> u8 {
+    pub fn get_palette_entry(&self, palette_id: usize, entry: usize) -> PpuResult<u8> {
         if entry == 0 {
             self.read_ppu_memory(0x3F00)
         } else {
@@ -238,37 +269,38 @@ impl Ppu {
     pub fn vram_addr_to_idx(&self, addr: u16) -> usize {
         let addr: usize = (addr as usize - 0x2000) % 0x0F00;
         match self.cartridge.borrow().mirroring_mode {
-            super::cartridge::MirroringMode::Horizontal => if addr < 0x0400 {
-                addr
-            } else if addr < 0x0C00 {
-                addr - 0x0400
-            } else  {
-                addr - 0x0800
-            },
-            super::cartridge::MirroringMode::Vertical => if addr < 0x0800 {
-                addr
-            } else {
-                addr - 0x0800
-            },
+            super::cartridge::MirroringMode::Horizontal => {
+                if addr < 0x0400 {
+                    addr
+                } else if addr < 0x0C00 {
+                    addr - 0x0400
+                } else {
+                    addr - 0x0800
+                }
+            }
+            super::cartridge::MirroringMode::Vertical => {
+                if addr < 0x0800 {
+                    addr
+                } else {
+                    addr - 0x0800
+                }
+            }
         }
-        
     }
 
-    pub fn read_ppu_memory(&self, addr: u16) -> u8 {
+    pub fn read_ppu_memory(&self, addr: u16) -> PpuResult<u8> {
         match addr {
             0..=0x1FFF => {
                 let chr = &self.cartridge.borrow().chr;
                 if addr as usize >= chr.len() {
-                    return 0;
+                    Err(PpuError::InvalidBusRead(addr))
+                } else {
+                    Ok(chr[addr as usize])
                 }
-                chr[addr as usize]
             }
-            0x2000..=0x3EFF => self.vram[self.vram_addr_to_idx(addr)],
-            0x3F00..=0x3FFF => self.palette_table[(addr as usize - 0x3F00) % 0x20],
-            _ => {
-                println!("Warning: Invalid PPU address read {addr:04X}");
-                0
-            },
+            0x2000..=0x3EFF => Ok(self.vram[self.vram_addr_to_idx(addr)]),
+            0x3F00..=0x3FFF => Ok(self.palette_table[(addr as usize - 0x3F00) % 0x20]),
+            _ => Err(PpuError::InvalidBusRead(addr)),
         }
     }
 
@@ -309,11 +341,11 @@ impl Ppu {
         addr
     }
 
-    pub fn read_data_register(&mut self) -> u8 {
+    pub fn read_data_register(&mut self) -> PpuResult<u8> {
         let addr = self.increment_address_register();
         let buffer = self.internal_data_buffer;
-        self.internal_data_buffer = self.read_ppu_memory(addr);
-        buffer
+        self.internal_data_buffer = self.read_ppu_memory(addr)?;
+        Ok(buffer)
     }
 
     pub fn write_data_register(&mut self, value: u8) {
@@ -321,38 +353,37 @@ impl Ppu {
         self.write_ppu_memory(addr, value);
     }
 
-    pub fn read_status_register(&mut self) -> u8 {
+    pub fn read_status_register(&mut self) -> PpuResult<u8> {
         let status = self.status_register.pack().unwrap()[0];
         self.status_register.vblank_started = false;
         self.register_latch = false;
-        status
+        Ok(status)
     }
 
-    pub fn cpu_bus_peek(&self, addr: u16) -> u8 {
+    pub fn cpu_bus_peek(&self, addr: u16) -> Option<u8> {
         match addr {
-            OAM_ADDR => self.oam_addr,
-            OAM_DATA => self.oam_data[self.oam_addr as usize],
-            PPU_SCROLL => 0,
-            CONTROL_REGISTER_ADDR => self.control_register.pack().unwrap()[0],
-            MASK_REGISTER_ADDR => self.mask_register.pack().unwrap()[0],
-            STATUS_REGISTER_ADDR => self.status_register.pack().unwrap()[0],
-            _ => {
-                println!("Warning: Invalid peek/read from PPU at {addr:04X}");
-                0
-            }
+            OAM_ADDR => Some(self.oam_addr),
+            OAM_DATA => Some(self.oam_data[self.oam_addr as usize]),
+            PPU_SCROLL => Some(0),
+            CONTROL_REGISTER_ADDR => Some(self.control_register.pack().unwrap()[0]),
+            MASK_REGISTER_ADDR => Some(self.mask_register.pack().unwrap()[0]),
+            STATUS_REGISTER_ADDR => Some(self.status_register.pack().unwrap()[0]),
+            _ => None,
         }
     }
 
-    pub fn cpu_bus_read(&mut self, addr: u16) -> u8 {
+    pub fn cpu_bus_read(&mut self, addr: u16) -> PpuResult<u8> {
         match addr {
             OAM_DATA => {
                 let value = self.oam_data[self.oam_addr as usize];
                 self.oam_addr = self.oam_addr.wrapping_add(1);
-                value
+                Ok(value)
             }
             DATA_REGISTER_ADDR => self.read_data_register(),
             STATUS_REGISTER_ADDR => self.read_status_register(),
-            _ => self.cpu_bus_peek(addr),
+            _ => self
+                .cpu_bus_peek(addr)
+                .ok_or(PpuError::InvalidBusPeek(addr)),
         }
     }
 
@@ -404,20 +435,20 @@ impl Ppu {
     ////////////////////////////////////////////////////////////////////////////////
     // Debug API
 
-    pub fn debug_render_nametable(&self) -> ColorImage {
+    pub fn debug_render_nametable(&self) -> PpuResult<ColorImage> {
         let mut image = ColorImage::new([64 * 8, 30 * 8], Color32::TRANSPARENT);
         let mut addr = VramAddress { value: 0 };
         for scanline in 0..240 {
             addr.set_coarse_x(0);
             for coarse_x in 0..64 {
-                let background = NametableEntry::new(self, &addr);
+                let background = NametableEntry::new(self, &addr)?;
                 for (fine_x, pixel) in background
                     .pattern
-                    .row_pixels(self, addr.fine_y() as usize)
+                    .row_pixels(self, addr.fine_y() as usize)?
                     .enumerate()
                 {
                     let color =
-                        self.get_palette_entry(background.palette_id as usize, pixel as usize);
+                        self.get_palette_entry(background.palette_id as usize, pixel as usize)?;
                     let rgb = if color < 64 {
                         SYSTEM_PALETTE[color as usize]
                     } else {
@@ -429,7 +460,7 @@ impl Ppu {
             }
             addr.increment_y();
         }
-        image
+        Ok(image)
     }
 }
 
@@ -508,9 +539,9 @@ pub struct NametableEntry {
 }
 
 impl NametableEntry {
-    pub fn new(ppu: &Ppu, addr: &VramAddress) -> NametableEntry {
-        let nametable_value = ppu.read_ppu_memory(addr.tile_addr());
-        let attr_byte = ppu.read_ppu_memory(addr.attribute_addr());
+    pub fn new(ppu: &Ppu, addr: &VramAddress) -> PpuResult<NametableEntry> {
+        let nametable_value = ppu.read_ppu_memory(addr.tile_addr())?;
+        let attr_byte = ppu.read_ppu_memory(addr.attribute_addr())?;
         let attribute = match (addr.coarse_x() % 4 / 2, addr.coarse_y() % 4 / 2) {
             (0, 0) => attr_byte & 0b11,
             (1, 0) => (attr_byte >> 2) & 0b11,
@@ -519,16 +550,20 @@ impl NametableEntry {
             (_, _) => panic!("should not happen"),
         };
 
-        NametableEntry {
+        Ok(NametableEntry {
             pattern: Pattern::new(
                 ppu.control_register.background_pattern_addr as u8,
                 nametable_value,
             ),
             palette_id: attribute,
-        }
+        })
     }
 
-    pub fn from_coarse_x_y(ppu: &Ppu, mut coarse_x: usize, mut coarse_y: usize) -> NametableEntry {
+    pub fn from_coarse_x_y(
+        ppu: &Ppu,
+        mut coarse_x: usize,
+        mut coarse_y: usize,
+    ) -> PpuResult<NametableEntry> {
         let bank_x = coarse_x / 32;
         let bank_y = coarse_y / 30;
         let bank = bank_x + bank_y * 2 + ppu.control_register.nametable as usize;
@@ -537,10 +572,10 @@ impl NametableEntry {
         let base_addr = 0x2000 + (0x0400 * bank);
 
         let addr = base_addr + coarse_y * 0x20 + coarse_x;
-        let nametable_value = ppu.read_ppu_memory(addr as u16);
+        let nametable_value = ppu.read_ppu_memory(addr as u16)?;
 
         let attr_table_idx = coarse_y / 4 * 8 + coarse_x / 4;
-        let attr_byte = ppu.read_ppu_memory((base_addr + 0x03C0 + attr_table_idx) as u16);
+        let attr_byte = ppu.read_ppu_memory((base_addr + 0x03C0 + attr_table_idx) as u16)?;
         let attribute = match (coarse_x % 4 / 2, coarse_y % 4 / 2) {
             (0, 0) => attr_byte & 0b11,
             (1, 0) => (attr_byte >> 2) & 0b11,
@@ -549,13 +584,13 @@ impl NametableEntry {
             (_, _) => panic!("should not happen"),
         };
 
-        NametableEntry {
+        Ok(NametableEntry {
             pattern: Pattern::new(
                 ppu.control_register.background_pattern_addr as u8,
                 nametable_value,
             ),
             palette_id: attribute,
-        }
+        })
     }
 }
 
@@ -580,15 +615,15 @@ impl Sprite {
         }
     }
 
-    pub fn row_pixels(&self, ppu: &Ppu, mut y: usize) -> impl Iterator<Item = u8> {
+    pub fn row_pixels(&self, ppu: &Ppu, mut y: usize) -> PpuResult<impl Iterator<Item = u8>> {
         if self.data.attr.flip_v {
             y = 7 - y;
         }
-        let mut row: Vec<u8> = self.pattern.row_pixels(ppu, y).collect();
+        let mut row: Vec<u8> = self.pattern.row_pixels(ppu, y)?.collect();
         if self.data.attr.flip_h {
             row.reverse();
         }
-        row.into_iter()
+        Ok(row.into_iter())
     }
 }
 
@@ -626,17 +661,17 @@ impl Pattern {
         }
     }
 
-    pub fn row_pixels(&self, ppu: &Ppu, y: usize) -> impl Iterator<Item = u8> + '_ {
-        let mut low = ppu.read_ppu_memory(self.addr + y as u16);
-        let mut high = ppu.read_ppu_memory(self.addr + y as u16 + 8);
+    pub fn row_pixels(&self, ppu: &Ppu, y: usize) -> PpuResult<impl Iterator<Item = u8> + '_> {
+        let mut low = ppu.read_ppu_memory(self.addr + y as u16)?;
+        let mut high = ppu.read_ppu_memory(self.addr + y as u16 + 8)?;
 
-        (0..8).map(move |_| {
+        Ok((0..8).map(move |_| {
             let low_bit = low & 0b1000_0000 > 0;
             let high_bit = high & 0b1000_0000 > 0;
             low <<= 1;
             high <<= 1;
             (high_bit as u8) << 1 | (low_bit as u8)
-        })
+        }))
     }
 }
 
@@ -845,11 +880,11 @@ mod tests {
         ppu.cpu_bus_write(ADDRESS_REGISTER_ADDR, 0x10);
         ppu.cpu_bus_write(ADDRESS_REGISTER_ADDR, 0x00);
         assert_eq!(ppu.v_register.value, 0x1000);
-        assert_eq!(ppu.cpu_bus_read(DATA_REGISTER_ADDR), 0x00);
+        assert_eq!(ppu.cpu_bus_read(DATA_REGISTER_ADDR).unwrap(), 0x00);
         assert_eq!(ppu.v_register.value, 0x1001);
-        assert_eq!(ppu.cpu_bus_read(DATA_REGISTER_ADDR), 0x12);
+        assert_eq!(ppu.cpu_bus_read(DATA_REGISTER_ADDR).unwrap(), 0x12);
         assert_eq!(ppu.v_register.value, 0x1002);
-        assert_eq!(ppu.cpu_bus_read(DATA_REGISTER_ADDR), 0x34);
+        assert_eq!(ppu.cpu_bus_read(DATA_REGISTER_ADDR).unwrap(), 0x34);
     }
 
     #[test]
@@ -873,7 +908,7 @@ mod tests {
 
         // Verify register latch is reset via status register reads.
         ppu.register_latch = true;
-        ppu.cpu_bus_read(0x2002);
+        ppu.cpu_bus_read(0x2002).unwrap();
         assert!(!ppu.register_latch);
 
         // Verify first scroll write, setting coarse and fine x.

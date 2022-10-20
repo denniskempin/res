@@ -4,6 +4,15 @@ use bincode::Decode;
 use bincode::Encode;
 use intbits::Bits;
 
+#[derive(Debug)]
+pub enum CartridgeError {
+    InvalidRead(u16),
+    InvalidWrite(u16),
+}
+
+pub type CartridgeResult<T> = std::result::Result<T, CartridgeError>;
+
+
 #[derive(Default, Encode, Decode, Clone)]
 pub enum MirroringMode {
     #[default]
@@ -56,28 +65,44 @@ impl Cartridge {
         Ok(())
     }
 
-    pub fn cpu_bus_peek(&self, addr: u16) -> u8 {
+    pub fn cpu_bus_peek(&self, addr: u16) -> Option<u8> {
         match addr {
-            0x6000..=0x7FFF => self.prg_ram[addr as usize - 0x6000],
+            0x6000..=0x7FFF => {
+                if !self.prg_ram.is_empty() {
+                    let ram_size = self.prg_ram.len();
+                    Some(self.prg_ram[(addr as usize - 0x6000) % ram_size])
+                } else {
+                    None
+                }
+            },
             0x8000..=0xFFFF => {
-                let addr = addr as usize % self.prg.len();
-                self.prg[addr]
+                if !self.prg.is_empty() {
+                    let addr = addr as usize % self.prg.len();
+                    Some(self.prg[addr])
+                } else {
+                    None
+                }
             }
-            _ => panic!("Warning. Illegal peek from: ${:04X}", addr),
+            _ => None
         }
     }
 
-    pub fn cpu_bus_read(&mut self, addr: u16) -> u8 {
-        self.cpu_bus_peek(addr)
+    pub fn cpu_bus_read(&mut self, addr: u16) -> CartridgeResult<u8> {
+        self.cpu_bus_peek(addr).ok_or(CartridgeError::InvalidRead(addr))
     }
 
-    pub fn cpu_bus_write(&mut self, addr: u16, value: u8) {
+    pub fn cpu_bus_write(&mut self, addr: u16, value: u8) -> CartridgeResult<()> {
         match addr {
-            0x6000..=0x7FFF => self.prg_ram[addr as usize - 0x6000] = value,
-            0x8000..=0xFFFF => {
-                println!("Warning: Illegal write to prg rom: 0x{:04X}", addr);
+            0x6000..=0x7FFF => {
+                if !self.prg_ram.is_empty() {
+                    let ram_size = self.prg_ram.len();
+                    self.prg_ram[(addr as usize - 0x6000) % ram_size] = value;
+                    Ok(())
+                } else {
+                    Err(CartridgeError::InvalidWrite(addr))
+                }
             }
-            _ => panic!("Warning. Illegal write to: ${:04X}", addr),
-        };
+            _ => Err(CartridgeError::InvalidWrite(addr))
+        }
     }
 }

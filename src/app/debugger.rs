@@ -139,7 +139,7 @@ impl Debugger {
                     for row in row_range {
                         let addr = (row * bytes_per_line) as u16;
                         let bytes = emulator.cpu().bus.peek_slice(addr, bytes_per_line as u16);
-                        let bytes_str = bytes.map(|s| format!("{:02X}", s)).join(" ");
+                        let bytes_str = bytes.map(|s| format!("{:02X}", s.unwrap())).join(" ");
                         ui.add(
                             Label::new(RichText::new(format!("{:04X}: {}", addr, bytes_str)))
                                 .wrap(false),
@@ -158,7 +158,7 @@ impl Debugger {
                 ui.label(RichText::new("Nametable").strong());
 
                 self.nametable_texture
-                    .set(emulator.ppu().debug_render_nametable());
+                    .set(emulator.ppu().debug_render_nametable().unwrap());
                 ui.image(&self.nametable_texture, vec2(420.0, 210.0));
             });
 
@@ -251,7 +251,10 @@ impl Debugger {
                         );
                         response.on_hover_text(format!("Color {color_id} of palette {palette_id}"));
 
-                        let color = emulator.ppu().get_palette_entry(palette_id, color_id);
+                        let color = emulator
+                            .ppu()
+                            .get_palette_entry(palette_id, color_id)
+                            .unwrap();
                         let rgb = if color < 64 {
                             SYSTEM_PALETTE[color as usize]
                         } else {

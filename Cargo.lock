@@ -1795,6 +1795,7 @@ dependencies = [
  "packed_struct",
  "rand",
  "regex",
+ "thiserror",
  "tracing-subscriber",
  "tracing-wasm",
  "wasm-timer",

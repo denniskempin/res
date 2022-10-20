@@ -22,8 +22,8 @@ pub fn test_basic_program() {
     .unwrap();
     system.cpu.program_counter = 0x8000;
     system.execute_until_halt().unwrap();
-    assert_eq!(system.cpu.bus.peek(0x20_u16), 0x10);
-    assert_eq!(system.cpu.bus.peek(0x21_u16), 0x12);
+    assert_eq!(system.cpu.bus.peek(0x20_u16).unwrap(), 0x10);
+    assert_eq!(system.cpu.bus.peek(0x21_u16).unwrap(), 0x12);
     assert_eq!(system.cpu.a, 0x11);
     assert_eq!(system.cpu.y, 0x13);
 }
@@ -39,11 +39,12 @@ pub fn test_gblargg_official_only() {
             .cpu()
             .bus
             .peek_slice(0x6004, 100)
+            .map(|c| c.unwrap())
             .take_while(|c| *c != 0)
             .collect();
         let msg_str = String::from_utf8(msg).unwrap();
         println!("Status: {}", msg_str.trim());
-        let status = system.cpu().bus.peek(0x6000);
+        let status = system.cpu().bus.peek(0x6000).unwrap();
         if status != 0x80 {
             assert_eq!(status, 0x00);
             assert_eq!(msg_str.trim(), "All 16 tests passed");
@@ -70,7 +71,31 @@ pub fn test_nestest_snapshot() {
 
     let snapshot = system.snapshot();
     let resumed_system = System::with_snapshot(&snapshot).unwrap();
-    assert_eq!(system.trace().unwrap(), resumed_system.trace().unwrap());
+    assert_eq!(system.trace(), resumed_system.trace());
+}
+
+#[test]
+pub fn test_ops_dont_panic() {
+    let mut system = System::default();
+    let cpu = &mut system.cpu;
+    for op in 0..0xFFFFFF_u32 {
+        let bytes = op.to_le_bytes();
+        cpu.bus.write(0x0000, bytes[0]).unwrap();
+        cpu.bus.write(0x0001, bytes[1]).unwrap();
+        cpu.bus.write(0x0002, bytes[2]).unwrap();
+        cpu.program_counter = 0x0000;
+        if let Ok(operation) = cpu.next_operation() {
+            println!(
+                "Executing {} [{:02X} {:02X} {:02X}]",
+                operation.format(cpu),
+                bytes[0],
+                bytes[1],
+                bytes[2]
+            );
+            let result = operation.execute(cpu);
+            println!("{:?}", result);
+        }
+    }
 }
 
 #[test]
@@ -96,7 +121,7 @@ pub fn compare_to_log(mut system: System, log_file: &str, goal_count: usize) {
 
         let expected_trace = Trace::from_log_line(&line.unwrap()).unwrap();
         println!("{i:6} Exp: {expected_trace}");
-        let actual_trace = system.trace().unwrap();
+        let actual_trace = system.trace();
         println!("{i:6} Act: {actual_trace}");
 
         // Cycle count mismatches happen often and are hard to read. Print
