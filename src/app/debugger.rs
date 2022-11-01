@@ -1,4 +1,5 @@
 use std::fmt::Debug;
+use std::fmt::format;
 
 use eframe::CreationContext;
 use egui::vec2;
@@ -16,6 +17,7 @@ use egui::TextureHandle;
 use egui::Ui;
 use itertools::Itertools;
 
+use crate::nes::cpu::ExecResult;
 use crate::nes::cpu::Operation;
 use crate::nes::ppu::SYSTEM_PALETTE;
 use crate::nes::System;
@@ -29,6 +31,9 @@ pub struct Debugger {
 
     inspector_is_open: bool,
     scroll_to_memory_location: Option<u16>,
+
+    error_modal_text: String,
+    error_modal_open: bool
 }
 
 impl Debugger {
@@ -39,77 +44,89 @@ impl Debugger {
             previous_states: RingBuffer::default(),
             scroll_to_memory_location: None,
             inspector_is_open: false,
+            error_modal_text: String::new(),
+            error_modal_open: false
         }
+    }
+
+    pub fn run_command(&mut self, emulator: &mut System, command: DebugCommand) -> ExecResult<()> {
+        match command {
+            DebugCommand::Run => {
+                if emulator.ppu().frame % 60 == 0 {
+                    self.previous_states.push(emulator.clone());
+                }
+                emulator.execute_one_frame()?;
+            }
+            DebugCommand::StepFrames(n) => {
+                emulator.execute_one_frame()?;
+                if n > 1 {
+                    self.command = Some(DebugCommand::StepFrames(n - 1));
+                } else {
+                    self.command = None
+                }
+            }
+            DebugCommand::StepScanlines(n) => {
+                let current_scanline = emulator.ppu().scanline;
+                while current_scanline == emulator.ppu().scanline {
+                    emulator.cpu.execute_one()?;
+                }
+                if n > 1 {
+                    self.command = Some(DebugCommand::StepScanlines(n - 1));
+                } else {
+                    self.command = None
+                }
+            }
+            DebugCommand::StepInstructions(n) => {
+                emulator.cpu.execute_one()?;
+                if n > 1 {
+                    self.command = Some(DebugCommand::StepInstructions(n - 1));
+                } else {
+                    self.command = None
+                }
+            }
+            DebugCommand::StepBack => {
+                *emulator = self.previous_states.pop();
+                self.command = None
+            }
+            DebugCommand::StepSprite0Hit => {
+                while emulator.ppu().status_register.sprite_zero_hit {
+                    emulator.cpu.execute_one()?;
+                }
+                while !emulator.ppu().status_register.sprite_zero_hit {
+                    emulator.cpu.execute_one()?;
+                }
+                self.command = None
+            }
+            DebugCommand::StepVSyncStart => {
+                while emulator.ppu().status_register.vblank_started {
+                    emulator.cpu.execute_one()?;
+                }
+                while !emulator.ppu().status_register.vblank_started {
+                    emulator.cpu.execute_one()?;
+                }
+                self.command = None
+            }
+        }
+        Ok(())
     }
 
     pub fn run_emulator(&mut self, emulator: &mut System) {
         if let Some(command) = self.command {
-            match command {
-                DebugCommand::Run => {
-                    if emulator.ppu().frame % 60 == 0 {
-                        self.previous_states.push(emulator.clone());
-                    }
-                    emulator.execute_one_frame().unwrap();
-                }
-                DebugCommand::StepFrames(n) => {
-                    emulator.execute_one_frame().unwrap();
-                    if n > 1 {
-                        self.command = Some(DebugCommand::StepFrames(n - 1));
-                    } else {
-                        self.command = None
-                    }
-                }
-                DebugCommand::StepScanlines(n) => {
-                    let current_scanline = emulator.ppu().scanline;
-                    while current_scanline == emulator.ppu().scanline {
-                        emulator.cpu.execute_one().unwrap();
-                    }
-                    if n > 1 {
-                        self.command = Some(DebugCommand::StepScanlines(n - 1));
-                    } else {
-                        self.command = None
-                    }
-                }
-                DebugCommand::StepInstructions(n) => {
-                    emulator.cpu.execute_one().unwrap();
-                    if n > 1 {
-                        self.command = Some(DebugCommand::StepInstructions(n - 1));
-                    } else {
-                        self.command = None
-                    }
-                }
-                DebugCommand::StepBack => {
-                    *emulator = self.previous_states.pop();
-                    self.command = None
-                }
-                DebugCommand::StepSprite0Hit => {
-                    while emulator.ppu().status_register.sprite_zero_hit {
-                        emulator.cpu.execute_one().unwrap();
-                    }
-                    while !emulator.ppu().status_register.sprite_zero_hit {
-                        emulator.cpu.execute_one().unwrap();
-                    }
-                    self.command = None
-                }
-                DebugCommand::StepVSyncStart => {
-                    while emulator.ppu().status_register.vblank_started {
-                        emulator.cpu.execute_one().unwrap();
-                    }
-                    while !emulator.ppu().status_register.vblank_started {
-                        emulator.cpu.execute_one().unwrap();
-                    }
-                    self.command = None
-                }
+            if let Err(error) = self.run_command(emulator, command) {
+                self.error_modal_text = format!("{:?}", error);
+                self.error_modal_open = true;
+                self.command = None;
             }
         }
     }
 
-    pub fn right_debug_panel(&mut self, ui: &mut Ui, emulator: &System) {
-        self.debug_controls(ui, emulator);
-        ui.separator();
-        self.cpu_panel(ui, emulator);
-        ui.separator();
-        self.operations_panel(ui, emulator);
+    pub fn modals(&mut self, ui: &mut Ui, emulator: &System) {
+        egui::Window::new("Error")
+        .open(&mut self.error_modal_open)
+        .show(ui.ctx(), |ui| {
+            ui.label(self.error_modal_text.clone());
+        });
+
 
         egui::Window::new("CPU Bus")
             .open(&mut self.inspector_is_open)
@@ -149,6 +166,16 @@ impl Debugger {
             });
     }
 
+    pub fn right_debug_panel(&mut self, ui: &mut Ui, emulator: &System) {
+        self.debug_controls(ui, emulator);
+        ui.separator();
+        self.cpu_panel(ui, emulator);
+        ui.separator();
+        self.operations_panel(ui, emulator);
+
+        self.modals(ui, emulator);
+    }
+
     pub fn bottom_debug_panel(&mut self, ui: &mut Ui, emulator: &System) {
         ui.horizontal(|ui| {
             self.palette_table(ui, emulator);
@@ -159,7 +186,7 @@ impl Debugger {
 
                 self.nametable_texture
                     .set(emulator.ppu().debug_render_nametable().unwrap());
-                ui.image(&self.nametable_texture, vec2(420.0, 210.0));
+                ui.image(&self.nametable_texture, vec2(420.0, 420.0));
             });
 
             self.ppu_panel(ui, emulator);
@@ -327,28 +354,13 @@ impl Debugger {
             ui.label(RichText::new("PPU").strong());
             let ppu = emulator.ppu();
 
-            ui.label(format!("Cycle: {}/{}", ppu.cycle, ppu.scanline));
+            ui.label(format!("Frame: {:6}, Scanline: {:03}, Cycle: {:03}", ppu.frame, ppu.scanline, ppu.cycle));
+            ui.label(format!("V: {:}", ppu.v_register));
+            ui.label(format!("T: {:}", ppu.t_register));
             ui.label("Status:");
             let status = ppu.status_register;
             ui.label(format!(" vblank_started: {}", status.vblank_started));
             ui.label(format!(" sprite_zero_hit: {}", status.sprite_zero_hit));
-            ui.label("Control:");
-            let control = ppu.control_register;
-            ui.label(format!(" generate_nmi: {}", control.generate_nmi));
-            ui.label(format!(" sprite_size: {}", control.sprite_size));
-            ui.label(format!(
-                " background_pattern_addr: {}",
-                control.background_pattern_addr
-            ));
-            ui.label(format!(
-                " sprite_pattern_addr: {}",
-                control.sprite_pattern_addr
-            ));
-            ui.label(format!(
-                " vram_add_increment: {}",
-                control.vram_add_increment
-            ));
-            ui.label(format!(" nametable: {}", control.nametable));
         });
     }
 }

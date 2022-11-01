@@ -135,7 +135,7 @@ impl eframe::App for EmulatorApp {
 
             egui::TopBottomPanel::bottom("bottom_debug_panel")
                 .resizable(false)
-                .height_range(240.0..=240.0)
+                .height_range(440.0..=440.0)
                 .show(ctx, |ui| {
                     ui.style_mut().override_font_id = Some(FontId::monospace(14.0));
                     self.debug_state.bottom_debug_panel(ui, &self.emulator);

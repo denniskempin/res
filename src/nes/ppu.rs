@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::fmt::Display;
 use std::fmt::Formatter;
 use std::rc::Rc;
 
@@ -126,45 +127,81 @@ impl Ppu {
             self.frame += 1;
         }
 
-        if self.cycle == 0 {
-            // Beginning of vblank
-            if self.scanline == 241 {
-                self.status_register.vblank_started = true;
-                self.vblank = true;
-                if self.control_register.generate_nmi {
-                    self.nmi_interrupt = true;
+        match self.scanline {
+            // Visible scanlines
+            0..=239 => {
+                match self.cycle {
+                    2..=255 | 320.. => {
+                        // Increment x every 8 cycles during visible or pre-render cycles
+                        if self.cycle % 8 == 0 && self.mask_register.show_background {
+                            self.v_register.increment_x();
+                        }
+                    }
+                    256 => {
+                        // Increment y at end of visible cycles
+                        if self.mask_register.show_background {
+                            self.v_register.increment_y();
+                        }
+                    }
+                    257 => {
+                        // Reset x at end of visible cycles
+                        if self.mask_register.show_background {
+                            self.v_register.set_coarse_x(self.t_register.coarse_x());
+                            self.v_register
+                                .set_nametable_x(self.t_register.nametable_x());
+                        }
+                    }
+                    _ => (),
                 }
             }
-            // End of vblank
-            if self.scanline == 261 {
-                self.status_register.vblank_started = false;
-                self.status_register.sprite_zero_hit = false;
-                self.vblank = false;
+            // Start of vblank
+            241 => {
+                if self.cycle == 1 {
+                    self.status_register.vblank_started = true;
+                    self.vblank = true;
+                    if self.control_register.generate_nmi {
+                        self.nmi_interrupt = true;
+                    }
+                }
             }
+            // Start of pre-render
+            261 => {
+                match self.cycle {
+                    1 => {
+                        self.status_register.vblank_started = false;
+                        self.status_register.sprite_zero_hit = false;
+                        self.vblank = false;
+                    }
+                    2..=255 | 320.. => {
+                        // Increment x every 8 cycles
+                        if self.cycle % 8 == 0 && self.mask_register.show_background {
+                            self.v_register.increment_x();
+                        }
+                    }
+                    256 => {
+                        // Increment y at end of visible cycles
+                        if self.mask_register.show_background {
+                            self.v_register.increment_y();
+                        }
+                    }
+                    257 => {
+                        // Reset x at end of visible cycles
+                        if self.mask_register.show_background {
+                            self.v_register.set_coarse_x(self.t_register.coarse_x());
+                            self.v_register
+                                .set_nametable_x(self.t_register.nametable_x());
+                        }
+                    },
+                    280..=304 => {
+                        self.v_register = self.t_register.clone();                    }
+                    _ => (),
+                }
+            },
+            _ => (),
         }
 
-        // Update v register at the right time in the PPU cycle.
-        if self.mask_register.show_background {
-            if self.cycle >= 328 && self.cycle <= 256 && self.cycle % 8 == 0 {
-                self.v_register.increment_x();
-            }
-            if self.cycle == 256 {
-                self.v_register.increment_y();
-            }
-            if self.cycle == 257 {
-                self.v_register.set_coarse_x(self.t_register.coarse_x());
-                self.v_register
-                    .set_nametable_x(self.t_register.nametable_x());
-            }
-            if self.scanline == 261 && self.cycle == 304 {
-                self.v_register.set_coarse_y(self.t_register.coarse_y());
-                self.v_register.set_fine_y(self.t_register.fine_y());
-                self.v_register
-                    .set_nametable_y(self.t_register.nametable_y());
-            }
-        }
-        // Shortcut: Render the whole scanline at once at cycle 257.
-        if self.scanline < 240 && self.cycle == 257 {
+        // Shortcut: Render the whole scanline at once at cycle 255.
+        if self.scanline < 240 && self.cycle == 255 {
             let sprite_0_hit = self.render_scanline()?;
             if sprite_0_hit {
                 self.status_register.sprite_zero_hit = true;
@@ -205,8 +242,12 @@ impl Ppu {
 
         // Write background pixels to buffer
         if self.mask_register.show_background {
-            // Create a temporary copy of the v_register since we are drawing a whole scanline
+            // Create a temporary copy of the v_register since we are drawing a whole scanline.
+            // Make sure to reset the x location to the beginning of the scanline.
             let mut addr = self.v_register.clone();
+            addr.set_coarse_x(self.t_register.coarse_x());
+            addr.set_nametable_x(self.t_register.nametable_x());
+
             for coarse_x in 0..33 {
                 let background = NametableEntry::new(self, &addr)?;
                 for (fine_x, pixel) in background
@@ -304,7 +345,7 @@ impl Ppu {
         }
     }
 
-    pub fn write_ppu_memory(&mut self, addr: u16, value: u8) {
+    pub fn write_ppu_memory(&mut self, addr: u16, value: u8) -> PpuResult<()> {
         // Map memory addresses
         let addr = match addr {
             0x3F10 => 0x3F00,
@@ -316,15 +357,18 @@ impl Ppu {
                 if (addr as usize) < chr.len() {
                     chr[addr as usize] = value
                 }
+                Ok(())
             }
             0x2000..=0x3EFF => {
                 self.vram[self.vram_addr_to_idx(addr)] = value;
+                Ok(())
             }
-            0x3F00..=0x3FFF => self.palette_table[(addr as usize - 0x3F00) % 32] = value,
-            _ => {
-                println!("Warning: Invalid PPU address write {addr:04X}");
+            0x3F00..=0x3FFF => {
+                self.palette_table[(addr as usize - 0x3F00) % 32] = value;
+                Ok(())
             }
-        };
+            _ => Err(PpuError::InvalidBusWrite(addr)),
+        }
     }
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -337,7 +381,10 @@ impl Ppu {
         } else {
             1
         };
-        self.v_register.value = addr.wrapping_add(inc);
+        self.v_register.value = self.v_register.value.wrapping_add(inc);
+        if self.v_register.value > 0x4000 {
+            self.v_register.value -= 0x4000;
+        }
         addr
     }
 
@@ -348,9 +395,9 @@ impl Ppu {
         Ok(buffer)
     }
 
-    pub fn write_data_register(&mut self, value: u8) {
+    pub fn write_data_register(&mut self, value: u8) -> PpuResult<()> {
         let addr = self.increment_address_register();
-        self.write_ppu_memory(addr, value);
+        self.write_ppu_memory(addr, value)
     }
 
     pub fn read_status_register(&mut self) -> PpuResult<u8> {
@@ -387,10 +434,16 @@ impl Ppu {
         }
     }
 
-    pub fn cpu_bus_write(&mut self, addr: u16, value: u8) {
+    pub fn cpu_bus_write(&mut self, addr: u16, value: u8) -> PpuResult<()> {
         match addr {
-            OAM_ADDR => self.oam_addr = value,
-            OAM_DATA => self.oam_data[self.oam_addr as usize] = value,
+            OAM_ADDR => {
+                self.oam_addr = value;
+                Ok(())
+            }
+            OAM_DATA => {
+                self.oam_data[self.oam_addr as usize] = value;
+                Ok(())
+            }
             PPU_SCROLL => {
                 if !self.register_latch {
                     self.t_register.set_coarse_x(value.bits(3..=7) as u16);
@@ -400,14 +453,17 @@ impl Ppu {
                     self.t_register.set_fine_y(value.bits(0..=2) as u16);
                 }
                 self.register_latch = !self.register_latch;
+                Ok(())
             }
             CONTROL_REGISTER_ADDR => {
                 self.control_register = ControlRegister::unpack(&[value]).unwrap();
                 self.t_register
                     .set_nametable(self.control_register.nametable as u16);
+                Ok(())
             }
             MASK_REGISTER_ADDR => {
                 self.mask_register = MaskRegister::unpack(&[value]).unwrap();
+                Ok(())
             }
             ADDRESS_REGISTER_ADDR => {
                 if self.register_latch {
@@ -417,9 +473,10 @@ impl Ppu {
                     self.t_register.set_high_byte(value.bits(0..=5) as u16);
                 }
                 self.register_latch = !self.register_latch;
+                Ok(())
             }
             DATA_REGISTER_ADDR => self.write_data_register(value),
-            _ => println!("Warning: Invalid write to PPU at {addr:04X}"),
+            _ => Err(PpuError::InvalidBusWrite(addr)),
         }
     }
 
@@ -436,9 +493,9 @@ impl Ppu {
     // Debug API
 
     pub fn debug_render_nametable(&self) -> PpuResult<ColorImage> {
-        let mut image = ColorImage::new([64 * 8, 30 * 8], Color32::TRANSPARENT);
+        let mut image = ColorImage::new([64 * 8, 60 * 8], Color32::TRANSPARENT);
         let mut addr = VramAddress { value: 0 };
-        for scanline in 0..240 {
+        for scanline in 0..240*2 {
             addr.set_coarse_x(0);
             for coarse_x in 0..64 {
                 let background = NametableEntry::new(self, &addr)?;
@@ -711,6 +768,20 @@ macro_rules! field_from_bit {
 #[derive(Debug, Default, Encode, Decode, Clone)]
 pub struct VramAddress {
     value: u16,
+}
+
+impl Display for VramAddress {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{:04X} (fy:{:X} n:{:X} y:{:02X} x:{:02X})",
+            self.value,
+            self.fine_y(),
+            self.nametable(),
+            self.coarse_y(),
+            self.coarse_x()
+        )
+    }
 }
 
 impl VramAddress {

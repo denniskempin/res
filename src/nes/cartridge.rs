@@ -3,6 +3,7 @@ use anyhow::Result;
 use bincode::Decode;
 use bincode::Encode;
 use intbits::Bits;
+use packed_struct::prelude::*;
 
 #[derive(Debug)]
 pub enum CartridgeError {
@@ -20,6 +21,29 @@ pub enum MirroringMode {
     Vertical,
 }
 
+
+#[derive(PackedStruct, Default, Debug, Copy, Clone)]
+#[packed_struct(bit_numbering = "msb0", size_bytes = "12")]
+pub struct InesHeader {
+    magic: [u8; 4],
+    prg_size: u8,
+    chr_size: u8,
+    #[packed_field(size_bits = 4)]
+    lower_mapper: u8,
+    four_screen: bool,
+    trainer: bool,
+    has_battery_ram: bool,
+    mirroring: bool,
+    #[packed_field(size_bits = 4)]
+    upper_mapper: u8,
+    #[packed_field(size_bits = 2)]
+    format: u8,
+    playchoice10: bool,
+    vs_unisystem: bool,
+    _flags9: u8,
+    _flags10: u8,
+}
+
 #[derive(Default, Encode, Decode, Clone)]
 pub struct Cartridge {
     pub prg: Vec<u8>,
@@ -34,18 +58,19 @@ impl Cartridge {
     }
 
     pub fn load_ines(&mut self, raw: &[u8]) -> Result<()> {
-        if raw[0] != b'N' || raw[1] != b'E' || raw[2] != b'S' {
+        let header = InesHeader::unpack_from_slice(&raw[0..12])?;
+        if header.magic != [78, 69, 83, 26] {
             return Err(anyhow!("Expected NES header."));
         }
-        let prg_len = raw[4] as usize * 16 * 1024;
-        let chr_len = raw[5] as usize * 8 * 1024;
-        let flags = raw[6];
-        self.mirroring_mode = if flags.bit(0) {
+        let mapper = header.lower_mapper | (header.upper_mapper << 4);
+        println!("Loading iNES (mapper {:}): {:?}", mapper, header);
+        let prg_len = header.prg_size as usize * 16 * 1024;
+        let chr_len = header.chr_size as usize * 8 * 1024;
+        self.mirroring_mode = if header.mirroring {
             MirroringMode::Vertical
         } else {
             MirroringMode::Horizontal
         };
-        println!("Rom: {prg_len} bytes, chr: {chr_len} bytes, flags: {flags:08b}");
         let prg_start = 16;
         let prg_end = prg_start + prg_len;
         let chr_end = prg_end + chr_len;
