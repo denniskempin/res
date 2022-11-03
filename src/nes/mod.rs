@@ -91,7 +91,12 @@ impl System {
 
     pub fn with_program(program: &[u8]) -> ExecResult<System> {
         let mut system = System::default();
-        system.cpu.bus.cartridge.borrow_mut().load_program(program);
+        system
+            .cpu
+            .bus
+            .cartridge
+            .borrow_mut()
+            .load_data(program, &[]);
         system.reset()?;
         system.cpu.boot()?;
         Ok(system)

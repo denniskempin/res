@@ -9,10 +9,12 @@ use egui::Color32;
 use egui::ColorImage;
 use image::RgbaImage;
 use intbits::Bits;
+use itertools::Itertools;
 use packed_struct::prelude::*;
 use thiserror::Error;
 
 use super::cartridge::Cartridge;
+use super::cartridge::CartridgeError;
 
 #[derive(Error)]
 pub enum PpuError {
@@ -22,6 +24,14 @@ pub enum PpuError {
     InvalidBusWrite(u16),
     #[error("Invalid peek from 0x{0:04X}")]
     InvalidBusPeek(u16),
+    #[error("Cartridge Error")]
+    CartridgeError(CartridgeError),
+}
+
+impl From<CartridgeError> for PpuError {
+    fn from(e: CartridgeError) -> Self {
+        PpuError::CartridgeError(e)
+    }
 }
 
 impl std::fmt::Debug for PpuError {
@@ -191,12 +201,15 @@ impl Ppu {
                             self.v_register
                                 .set_nametable_x(self.t_register.nametable_x());
                         }
-                    },
+                    }
                     280..=304 => {
-                        self.v_register = self.t_register.clone();                    }
+                        if self.mask_register.show_background {
+                            self.v_register = self.t_register.clone();
+                        }
+                    }
                     _ => (),
                 }
-            },
+            }
             _ => (),
         }
 
@@ -308,39 +321,13 @@ impl Ppu {
     // PPU Bus
 
     pub fn vram_addr_to_idx(&self, addr: u16) -> usize {
-        let addr: usize = (addr as usize - 0x2000) % 0x0F00;
-        match self.cartridge.borrow().mirroring_mode {
-            super::cartridge::MirroringMode::Horizontal => {
-                if addr < 0x0400 {
-                    addr
-                } else if addr < 0x0C00 {
-                    addr - 0x0400
-                } else {
-                    addr - 0x0800
-                }
-            }
-            super::cartridge::MirroringMode::Vertical => {
-                if addr < 0x0800 {
-                    addr
-                } else {
-                    addr - 0x0800
-                }
-            }
-        }
+        addr as usize - 0x2000
     }
 
     pub fn read_ppu_memory(&self, addr: u16) -> PpuResult<u8> {
         match addr {
-            0..=0x1FFF => {
-                let chr = &self.cartridge.borrow().chr;
-                if addr as usize >= chr.len() {
-                    Err(PpuError::InvalidBusRead(addr))
-                } else {
-                    Ok(chr[addr as usize])
-                }
-            }
-            0x2000..=0x3EFF => Ok(self.vram[self.vram_addr_to_idx(addr)]),
-            0x3F00..=0x3FFF => Ok(self.palette_table[(addr as usize - 0x3F00) % 0x20]),
+            0..=0x1FFF => Ok(self.cartridge.borrow_mut().ppu_bus_read(addr)?),
+            0x2000..=0x3FFF => Ok(self.vram[self.vram_addr_to_idx(addr)]),
             _ => Err(PpuError::InvalidBusRead(addr)),
         }
     }
@@ -353,18 +340,11 @@ impl Ppu {
         };
         match addr {
             0..=0x1FFF => {
-                let chr = &mut self.cartridge.borrow_mut().chr;
-                if (addr as usize) < chr.len() {
-                    chr[addr as usize] = value
-                }
+                self.cartridge.borrow_mut().ppu_bus_write(addr, value)?;
                 Ok(())
             }
-            0x2000..=0x3EFF => {
+            0x2000..=0x3FFF => {
                 self.vram[self.vram_addr_to_idx(addr)] = value;
-                Ok(())
-            }
-            0x3F00..=0x3FFF => {
-                self.palette_table[(addr as usize - 0x3F00) % 32] = value;
                 Ok(())
             }
             _ => Err(PpuError::InvalidBusWrite(addr)),
@@ -382,10 +362,7 @@ impl Ppu {
             1
         };
         self.v_register.value = self.v_register.value.wrapping_add(inc);
-        if self.v_register.value > 0x4000 {
-            self.v_register.value -= 0x4000;
-        }
-        addr
+        addr.bits(0..14)
     }
 
     pub fn read_data_register(&mut self) -> PpuResult<u8> {
@@ -492,32 +469,34 @@ impl Ppu {
     ////////////////////////////////////////////////////////////////////////////////
     // Debug API
 
-    pub fn debug_render_nametable(&self) -> PpuResult<ColorImage> {
+    pub fn debug_render_nametable(&self) -> ColorImage {
         let mut image = ColorImage::new([64 * 8, 60 * 8], Color32::TRANSPARENT);
         let mut addr = VramAddress { value: 0 };
-        for scanline in 0..240*2 {
+        for scanline in 0..(60 * 8) {
             addr.set_coarse_x(0);
             for coarse_x in 0..64 {
-                let background = NametableEntry::new(self, &addr)?;
-                for (fine_x, pixel) in background
-                    .pattern
-                    .row_pixels(self, addr.fine_y() as usize)?
-                    .enumerate()
-                {
-                    let color =
-                        self.get_palette_entry(background.palette_id as usize, pixel as usize)?;
-                    let rgb = if color < 64 {
-                        SYSTEM_PALETTE[color as usize]
-                    } else {
-                        Color32::RED
-                    };
-                    image[(coarse_x * 8 + fine_x, scanline)] = rgb;
+                if let Ok(background) = NametableEntry::new(self, &addr) {
+                    if let Ok(pixels) = background.pattern.row_pixels(self, addr.fine_y() as usize)
+                    {
+                        for (fine_x, pixel) in pixels.enumerate() {
+                            if let Ok(color) = self
+                                .get_palette_entry(background.palette_id as usize, pixel as usize)
+                            {
+                                let rgb = if color < 64 {
+                                    SYSTEM_PALETTE[color as usize]
+                                } else {
+                                    Color32::RED
+                                };
+                                image[(coarse_x * 8 + fine_x, scanline)] = rgb;
+                            }
+                        }
+                    }
                 }
                 addr.increment_x();
             }
             addr.increment_y();
         }
-        Ok(image)
+        image
     }
 }
 
@@ -849,6 +828,16 @@ pub struct StatusRegister {
     pub sprite_overflow: bool,
 }
 
+impl StatusRegister {
+    pub fn pretty_print(&self) -> String {
+        let mut chars: Vec<&str> = Vec::new();
+        chars.push(if self.sprite_overflow { "Ov" } else { ".." });
+        chars.push(if self.sprite_zero_hit { "Sz" } else { ".." });
+        chars.push(if self.vblank_started { "Vs" } else { ".." });
+        chars.iter().join("")
+    }
+}
+
 #[derive(PackedStruct, Encode, Decode, Clone, Debug, Default, Copy, PartialEq)]
 #[packed_struct(bit_numbering = "msb0", size_bytes = "1")]
 pub struct MaskRegister {
@@ -860,6 +849,21 @@ pub struct MaskRegister {
     pub mask_sprites: bool,
     pub mask_background: bool,
     pub grayscale: bool,
+}
+
+impl MaskRegister {
+    pub fn pretty_print(&self) -> String {
+        let mut chars: Vec<&str> = Vec::new();
+        chars.push(if self.grayscale { "Gr" } else { ".." });
+        chars.push(if self.mask_background { "Mb" } else { ".." });
+        chars.push(if self.mask_sprites { "Ms" } else { ".." });
+        chars.push(if self.show_background { "Sb" } else { ".." });
+        chars.push(if self.show_sprites { "Ss" } else { ".." });
+        chars.push(if self.emphasize_red { "Er" } else { ".." });
+        chars.push(if self.emphasize_green { "Eg" } else { ".." });
+        chars.push(if self.emphasize_blue { "Eb" } else { ".." });
+        chars.iter().join("")
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -946,10 +950,10 @@ mod tests {
         let mut chr = vec![0; 0x2000];
         chr[0x1000] = 0x12;
         chr[0x1001] = 0x34;
-        ppu.cartridge.borrow_mut().chr = chr;
+        ppu.cartridge.borrow_mut().load_data(&[], &chr);
 
-        ppu.cpu_bus_write(ADDRESS_REGISTER_ADDR, 0x10);
-        ppu.cpu_bus_write(ADDRESS_REGISTER_ADDR, 0x00);
+        ppu.cpu_bus_write(ADDRESS_REGISTER_ADDR, 0x10).unwrap();
+        ppu.cpu_bus_write(ADDRESS_REGISTER_ADDR, 0x00).unwrap();
         assert_eq!(ppu.v_register.value, 0x1000);
         assert_eq!(ppu.cpu_bus_read(DATA_REGISTER_ADDR).unwrap(), 0x00);
         assert_eq!(ppu.v_register.value, 0x1001);
@@ -961,8 +965,8 @@ mod tests {
     #[test]
     pub fn test_addr_register_clipping() {
         let mut ppu = Ppu::default();
-        ppu.cpu_bus_write(ADDRESS_REGISTER_ADDR, 0xFF);
-        ppu.cpu_bus_write(ADDRESS_REGISTER_ADDR, 0xFF);
+        ppu.cpu_bus_write(ADDRESS_REGISTER_ADDR, 0xFF).unwrap();
+        ppu.cpu_bus_write(ADDRESS_REGISTER_ADDR, 0xFF).unwrap();
         println!("{:016b}", ppu.v_register.value);
         println!("{:016b}", 0x3FFF);
         assert_eq!(ppu.v_register.value, 0x3FFF);
@@ -974,7 +978,7 @@ mod tests {
         let mut ppu = Ppu::default();
 
         // Verify setting nametable via control register.
-        ppu.cpu_bus_write(0x2000, 0b0000_0011);
+        ppu.cpu_bus_write(0x2000, 0b0000_0011).unwrap();
         assert_eq!(ppu.t_register.value, 0b000_11_00000_00000);
 
         // Verify register latch is reset via status register reads.
@@ -983,23 +987,23 @@ mod tests {
         assert!(!ppu.register_latch);
 
         // Verify first scroll write, setting coarse and fine x.
-        ppu.cpu_bus_write(0x2005, 0b01111101);
+        ppu.cpu_bus_write(0x2005, 0b01111101).unwrap();
         assert_eq!(ppu.t_register.value, 0b000_11_00000_01111);
         assert_eq!(ppu.fine_scroll_x, 0b101);
         assert!(ppu.register_latch);
 
         // Verify second scroll write, setting coarse and fine y.
-        ppu.cpu_bus_write(0x2005, 0b01011110);
+        ppu.cpu_bus_write(0x2005, 0b01011110).unwrap();
         assert_eq!(ppu.t_register.value, 0b110_11_01011_01111);
         assert!(!ppu.register_latch);
 
         // Verify first address register write. Writing high byte (except bit 14, which is set to 0).
-        ppu.cpu_bus_write(0x2006, 0b11111101);
+        ppu.cpu_bus_write(0x2006, 0b11111101).unwrap();
         assert_eq!(ppu.t_register.value, 0b011_11_01011_01111);
         assert!(ppu.register_latch);
 
         // Verify second address register write. Writing low byte. Then copying from t to v.
-        ppu.cpu_bus_write(0x2006, 0b11110000);
+        ppu.cpu_bus_write(0x2006, 0b11110000).unwrap();
         assert_eq!(ppu.t_register.value, 0b011_11_01111_10000);
         assert_eq!(ppu.v_register.value, ppu.t_register.value);
         assert!(!ppu.register_latch);

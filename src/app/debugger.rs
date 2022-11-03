@@ -1,5 +1,4 @@
 use std::fmt::Debug;
-use std::fmt::format;
 
 use eframe::CreationContext;
 use egui::vec2;
@@ -33,7 +32,7 @@ pub struct Debugger {
     scroll_to_memory_location: Option<u16>,
 
     error_modal_text: String,
-    error_modal_open: bool
+    error_modal_open: bool,
 }
 
 impl Debugger {
@@ -45,11 +44,11 @@ impl Debugger {
             scroll_to_memory_location: None,
             inspector_is_open: false,
             error_modal_text: String::new(),
-            error_modal_open: false
+            error_modal_open: false,
         }
     }
 
-    pub fn run_command(&mut self, emulator: &mut System, command: DebugCommand) -> ExecResult<()> {
+    fn run_command(&mut self, emulator: &mut System, command: DebugCommand) -> ExecResult<()> {
         match command {
             DebugCommand::Run => {
                 if emulator.ppu().frame % 60 == 0 {
@@ -122,11 +121,10 @@ impl Debugger {
 
     pub fn modals(&mut self, ui: &mut Ui, emulator: &System) {
         egui::Window::new("Error")
-        .open(&mut self.error_modal_open)
-        .show(ui.ctx(), |ui| {
-            ui.label(self.error_modal_text.clone());
-        });
-
+            .open(&mut self.error_modal_open)
+            .show(ui.ctx(), |ui| {
+                ui.label(self.error_modal_text.clone());
+            });
 
         egui::Window::new("CPU Bus")
             .open(&mut self.inspector_is_open)
@@ -185,7 +183,7 @@ impl Debugger {
                 ui.label(RichText::new("Nametable").strong());
 
                 self.nametable_texture
-                    .set(emulator.ppu().debug_render_nametable().unwrap());
+                    .set(emulator.ppu().debug_render_nametable());
                 ui.image(&self.nametable_texture, vec2(420.0, 420.0));
             });
 
@@ -353,14 +351,15 @@ impl Debugger {
         ui.vertical(|ui| {
             ui.label(RichText::new("PPU").strong());
             let ppu = emulator.ppu();
-
-            ui.label(format!("Frame: {:6}, Scanline: {:03}, Cycle: {:03}", ppu.frame, ppu.scanline, ppu.cycle));
+            let vblank = if ppu.vblank { "(vblank)" } else { "" };
+            ui.label(format!(
+                "Frame: {:6}, Scanline: {:03}, Cycle: {:03} {}",
+                ppu.frame, ppu.scanline, ppu.cycle, vblank
+            ));
             ui.label(format!("V: {:}", ppu.v_register));
             ui.label(format!("T: {:}", ppu.t_register));
-            ui.label("Status:");
-            let status = ppu.status_register;
-            ui.label(format!(" vblank_started: {}", status.vblank_started));
-            ui.label(format!(" sprite_zero_hit: {}", status.sprite_zero_hit));
+            ui.label(format!("Status: {}", ppu.status_register.pretty_print()));
+            ui.label(format!("Mask: {}", ppu.mask_register.pretty_print()));
         });
     }
 }
