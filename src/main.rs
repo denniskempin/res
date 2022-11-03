@@ -3,9 +3,9 @@
 use std::fs::File;
 use std::io::Read;
 
+use argh::FromArgs;
 use egui::vec2;
 use res::app::EmulatorApp;
-use argh::FromArgs;
 
 /// Rust Entertainment System
 #[derive(FromArgs)]
@@ -17,7 +17,7 @@ struct ResArgs {
 
 fn main() {
     let args: ResArgs = argh::from_env();
-    
+
     // Log to stdout (if you run with `RUST_LOG=debug`).
     tracing_subscriber::fmt::init();
 
@@ -32,7 +32,6 @@ fn main() {
         File::open(path).unwrap().read_to_end(&mut data).unwrap();
         data
     });
-
 
     eframe::run_native(
         "NES Emulator",

@@ -20,10 +20,9 @@ use egui::TextureHandle;
 use egui::Ui;
 
 use self::debugger::Debugger;
-use crate::nes::Record;
 use crate::nes::joypad::JoypadButton;
+use crate::nes::Record;
 use crate::nes::System;
-
 
 pub struct EmulatorApp {
     emulator: System,
@@ -70,8 +69,6 @@ impl EmulatorApp {
                     panic!("Unknown file type");
                 }
             }
-
-
         } else if let Some(bytes) = &drop.bytes {
             #[cfg(target_arch = "wasm32")]
             crate::wasm::save_rom_in_local_storage(bytes);
@@ -125,13 +122,13 @@ impl EmulatorApp {
                         std::fs::write(
                             "recording.json",
                             serde_json::to_string_pretty(&record).unwrap(),
-                        ).unwrap();
+                        )
+                        .unwrap();
                         self.emulator.record_to = None;
                     }
                 } else if ui.button("Record").clicked() {
                     self.emulator.record_to = Some(Record::default());
                 }
-
             });
         });
     }

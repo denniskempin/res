@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use image::RgbaImage;
 use res::nes::System;
 
-
 #[test]
 pub fn test_nestest() {
     test_playback("nestest", &[60, 90]);
@@ -16,15 +15,14 @@ pub fn test_donkey_kong() {
 
 #[test]
 pub fn test_super_mario_bros() {
-    test_playback("super_mario_bros", &[
-        // Title and intro
-        50, 
-        150,
-        // Split scroll glitches
-        374,
-        389,
-        395, 
-    ]);
+    test_playback(
+        "super_mario_bros",
+        &[
+            // Title and intro
+            50, 150, // Split scroll glitches
+            374, 389, 395,
+        ],
+    );
 }
 
 fn test_playback(name: &str, frame_numbers: &[usize]) {
@@ -46,9 +44,9 @@ fn execute_and_compare_screenshots(name: &str, system: &mut System, frame_number
         }
         compare_to_golden(
             &system.ppu().framebuffer.as_rgba_image(),
-            &format!("{name}-{frame_number}")
+            &format!("{name}-{frame_number}"),
         );
-    } 
+    }
 }
 
 fn compare_to_golden(image: &RgbaImage, name: &str) {
@@ -59,7 +57,10 @@ fn compare_to_golden(image: &RgbaImage, name: &str) {
         if golden != *image {
             let actual_path = golden_path.with_extension("actual.png");
             image.save(&actual_path).unwrap();
-            panic!("Image {} does not match golden. See {:?}", name, actual_path);
+            panic!(
+                "Image {} does not match golden. See {:?}",
+                name, actual_path
+            );
         }
     } else {
         image.save(golden_path).unwrap();

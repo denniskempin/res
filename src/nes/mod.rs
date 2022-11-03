@@ -9,14 +9,15 @@ use std::cell::RefCell;
 use std::fs;
 use std::path::Path;
 
+use serde::Deserialize;
+use serde::Serialize;
+
 use self::cartridge::Cartridge;
 use self::cpu::Cpu;
 use self::cpu::ExecResult;
 use self::cpu::Operation;
 use self::ppu::Ppu;
 use self::trace::Trace;
-
-use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct RecordEntry {
@@ -28,7 +29,6 @@ pub struct RecordEntry {
 pub struct Record {
     pub entries: Vec<RecordEntry>,
 }
-
 
 #[derive(Default, Clone)]
 pub struct System {
@@ -155,8 +155,8 @@ impl System {
     pub fn with_snapshot(snapshot: &[u8]) -> ExecResult<System> {
         Ok(System {
             cpu: bincode::decode_from_slice(snapshot, bincode::config::standard())
-            .unwrap()
-            .0,
+                .unwrap()
+                .0,
             ..Default::default()
         })
     }
