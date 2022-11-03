@@ -1,0 +1,30 @@
+{
+  "entries": [
+    {
+      "frame": 70,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        true,
+        false,
+        false,
+        false,
+        false
+      ]
+    },
+    {
+      "frame": 75,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
+    }
+  ]
+}

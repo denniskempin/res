@@ -1,5 +1,7 @@
 mod debugger;
 
+use std::ffi::OsStr;
+use std::fs;
 use std::fs::File;
 use std::io::Read;
 
@@ -18,8 +20,10 @@ use egui::TextureHandle;
 use egui::Ui;
 
 use self::debugger::Debugger;
+use crate::nes::Record;
 use crate::nes::joypad::JoypadButton;
 use crate::nes::System;
+
 
 pub struct EmulatorApp {
     emulator: System,
@@ -51,9 +55,23 @@ impl EmulatorApp {
 
     fn load_dropped_file(&mut self, drop: &DroppedFile) {
         if let Some(path) = &drop.path {
-            let mut data: Vec<u8> = Vec::new();
-            File::open(path).unwrap().read_to_end(&mut data).unwrap();
-            self.emulator = System::with_ines_bytes(&data).unwrap();
+            match path.extension().and_then(OsStr::to_str) {
+                Some("json") => {
+                    let data = fs::read_to_string(path).unwrap();
+                    let record: Record = serde_json::from_str(&data).unwrap();
+                    self.emulator.playback_from = Some(record);
+                }
+                Some("nes") => {
+                    let mut data: Vec<u8> = Vec::new();
+                    File::open(path).unwrap().read_to_end(&mut data).unwrap();
+                    self.emulator = System::with_ines_bytes(&data).unwrap();
+                }
+                _ => {
+                    panic!("Unknown file type");
+                }
+            }
+
+
         } else if let Some(bytes) = &drop.bytes {
             #[cfg(target_arch = "wasm32")]
             crate::wasm::save_rom_in_local_storage(bytes);
@@ -63,15 +81,32 @@ impl EmulatorApp {
     }
 
     fn update_keys(&mut self, input: &InputState) {
-        let joypad0 = self.emulator.joypad0_mut();
-        joypad0.set_button(JoypadButton::Right, input.key_down(Key::ArrowRight));
-        joypad0.set_button(JoypadButton::Left, input.key_down(Key::ArrowLeft));
-        joypad0.set_button(JoypadButton::Down, input.key_down(Key::ArrowDown));
-        joypad0.set_button(JoypadButton::Up, input.key_down(Key::ArrowUp));
-        joypad0.set_button(JoypadButton::Start, input.key_down(Key::S));
-        joypad0.set_button(JoypadButton::Select, input.key_down(Key::A));
-        joypad0.set_button(JoypadButton::ButtonB, input.key_down(Key::Z));
-        joypad0.set_button(JoypadButton::ButtonA, input.key_down(Key::X));
+        let mut joypad0 = [false; 8];
+        if input.key_down(Key::ArrowRight) {
+            joypad0[JoypadButton::Right as usize] = true;
+        }
+        if input.key_down(Key::ArrowLeft) {
+            joypad0[JoypadButton::Left as usize] = true;
+        }
+        if input.key_down(Key::ArrowDown) {
+            joypad0[JoypadButton::Down as usize] = true;
+        }
+        if input.key_down(Key::ArrowUp) {
+            joypad0[JoypadButton::Up as usize] = true;
+        }
+        if input.key_down(Key::S) {
+            joypad0[JoypadButton::Start as usize] = true;
+        }
+        if input.key_down(Key::A) {
+            joypad0[JoypadButton::Select as usize] = true;
+        }
+        if input.key_down(Key::Z) {
+            joypad0[JoypadButton::ButtonB as usize] = true;
+        }
+        if input.key_down(Key::X) {
+            joypad0[JoypadButton::ButtonA as usize] = true;
+        }
+        self.emulator.update_buttons(joypad0);
     }
 
     fn menu_bar(&mut self, ui: &mut Ui) {
@@ -85,6 +120,18 @@ impl EmulatorApp {
                 if ui.button("Debug").clicked() {
                     self.debug_mode = !self.debug_mode;
                 }
+                if let Some(record) = &mut self.emulator.record_to {
+                    if ui.button("Save Recording").clicked() {
+                        std::fs::write(
+                            "recording.json",
+                            serde_json::to_string_pretty(&record).unwrap(),
+                        ).unwrap();
+                        self.emulator.record_to = None;
+                    }
+                } else if ui.button("Record").clicked() {
+                    self.emulator.record_to = Some(Record::default());
+                }
+
             });
         });
     }

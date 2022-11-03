@@ -1,6 +1,9 @@
 use bincode::Decode;
 use bincode::Encode;
+use serde::Deserialize;
+use serde::Serialize;
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum JoypadButton {
     ButtonA = 0,
     ButtonB = 1,
@@ -20,8 +23,10 @@ pub struct Joypad {
 }
 
 impl Joypad {
-    pub fn set_button(&mut self, button: JoypadButton, state: bool) {
-        self.button_states[button as usize] = state;
+    pub fn update_buttons(&mut self, buttons: [bool; 8]) -> bool {
+        let delta = self.button_states != buttons;
+        self.button_states = buttons;
+        delta
     }
 
     pub fn cpu_bus_peek(&self) -> u8 {

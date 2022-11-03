@@ -9,20 +9,32 @@ use std::cell::RefCell;
 use std::fs;
 use std::path::Path;
 
-use bincode::Decode;
-use bincode::Encode;
-
 use self::cartridge::Cartridge;
 use self::cpu::Cpu;
 use self::cpu::ExecResult;
 use self::cpu::Operation;
-use self::joypad::Joypad;
 use self::ppu::Ppu;
 use self::trace::Trace;
 
-#[derive(Default, Encode, Decode, Clone)]
+use serde::{Serialize, Deserialize};
+
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
+pub struct RecordEntry {
+    pub frame: usize,
+    pub joypad_0: [bool; 8],
+}
+
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
+pub struct Record {
+    pub entries: Vec<RecordEntry>,
+}
+
+
+#[derive(Default, Clone)]
 pub struct System {
     pub cpu: Cpu,
+    pub record_to: Option<Record>,
+    pub playback_from: Option<Record>,
 }
 
 impl System {
@@ -38,16 +50,35 @@ impl System {
         &self.cpu.bus.cartridge
     }
 
-    pub fn joypad0_mut(&mut self) -> &mut Joypad {
-        &mut self.cpu.bus.joypad0
-    }
-
     pub fn tick(&mut self) -> ExecResult<bool> {
         self.cpu.execute_one()
     }
 
+    pub fn playback_from_file(&mut self, file: &Path) {
+        self.playback_from = Some(serde_json::from_slice(&fs::read(file).unwrap()).unwrap());
+    }
+
+    pub fn update_buttons(&mut self, joypad0: [bool; 8]) {
+        if let Some(record) = &self.playback_from {
+            for entry in &record.entries {
+                if entry.frame == self.ppu().frame {
+                    println!("Playback: {:?}", entry);
+                    self.cpu.bus.joypad0.update_buttons(entry.joypad_0);
+                }
+            }
+        } else if self.cpu.bus.joypad0.update_buttons(joypad0) {
+            if let Some(record) = &mut self.record_to {
+                record.entries.push(RecordEntry {
+                    frame: self.cpu.bus.ppu.frame,
+                    joypad_0: joypad0,
+                });
+                println!("Recorded: {:?}", record.entries.last());
+            }
+        }
+    }
+
     pub fn snapshot(&self) -> Vec<u8> {
-        bincode::encode_to_vec(self, bincode::config::standard()).unwrap()
+        bincode::encode_to_vec(&self.cpu, bincode::config::standard()).unwrap()
     }
 
     pub fn trace(&self) -> Trace {
@@ -122,11 +153,12 @@ impl System {
     }
 
     pub fn with_snapshot(snapshot: &[u8]) -> ExecResult<System> {
-        Ok(
-            bincode::decode_from_slice(snapshot, bincode::config::standard())
-                .unwrap()
-                .0,
-        )
+        Ok(System {
+            cpu: bincode::decode_from_slice(snapshot, bincode::config::standard())
+            .unwrap()
+            .0,
+            ..Default::default()
+        })
     }
 
     pub fn execute_until_halt(&mut self) -> ExecResult<()> {
