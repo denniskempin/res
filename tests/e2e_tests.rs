@@ -11,7 +11,20 @@ pub fn test_nestest() {
 
 #[test]
 pub fn test_donkey_kong() {
-    test_playback("donkey_kong", &[100, 1000, 2000, 3000]);
+    test_playback("donkey_kong", &[100, 1000, 2000]);
+}
+
+#[test]
+pub fn test_super_mario_bros() {
+    test_playback("super_mario_bros", &[
+        // Title and intro
+        50, 
+        150,
+        // Split scroll glitches
+        374,
+        389,
+        395, 
+    ]);
 }
 
 fn test_playback(name: &str, frame_numbers: &[usize]) {
@@ -27,15 +40,10 @@ fn test_playback(name: &str, frame_numbers: &[usize]) {
 
 fn execute_and_compare_screenshots(name: &str, system: &mut System, frame_numbers: &[usize]) {
     for frame_number in frame_numbers {
-        // Don't render while skipping frames to make test run faster.
-        system.cpu.bus.ppu.skip_rendering = true;
-        while system.ppu().frame < *frame_number - 1 {
+        while system.ppu().frame != *frame_number {
             system.update_buttons([false; 8]);
             system.execute_one_frame().unwrap();
         }
-        system.cpu.bus.ppu.skip_rendering = false;
-        system.update_buttons([false; 8]);
-        system.execute_one_frame().unwrap();
         compare_to_golden(
             &system.ppu().framebuffer.as_rgba_image(),
             &format!("{name}-{frame_number}")

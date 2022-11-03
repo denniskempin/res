@@ -1,0 +1,563 @@
+{
+  "entries": [
+    {
+      "frame": 88,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        true,
+        false,
+        false,
+        false,
+        false
+      ]
+    },
+    {
+      "frame": 98,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
+    },
+    {
+      "frame": 159,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true
+      ]
+    },
+    {
+      "frame": 382,
+      "joypad_0": [
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true
+      ]
+    },
+    {
+      "frame": 448,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true
+      ]
+    },
+    {
+      "frame": 512,
+      "joypad_0": [
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true
+      ]
+    },
+    {
+      "frame": 576,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true
+      ]
+    },
+    {
+      "frame": 619,
+      "joypad_0": [
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true
+      ]
+    },
+    {
+      "frame": 644,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true
+      ]
+    },
+    {
+      "frame": 662,
+      "joypad_0": [
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true
+      ]
+    },
+    {
+      "frame": 715,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true
+      ]
+    },
+    {
+      "frame": 737,
+      "joypad_0": [
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true
+      ]
+    },
+    {
+      "frame": 767,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true
+      ]
+    },
+    {
+      "frame": 777,
+      "joypad_0": [
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true
+      ]
+    },
+    {
+      "frame": 819,
+      "joypad_0": [
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
+    },
+    {
+      "frame": 822,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
+    },
+    {
+      "frame": 828,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false
+      ]
+    },
+    {
+      "frame": 862,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        false,
+        true
+      ]
+    },
+    {
+      "frame": 863,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true
+      ]
+    },
+    {
+      "frame": 872,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
+    },
+    {
+      "frame": 877,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false
+      ]
+    },
+    {
+      "frame": 879,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+        false,
+        false
+      ]
+    },
+    {
+      "frame": 885,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false
+      ]
+    },
+    {
+      "frame": 905,
+      "joypad_0": [
+        true,
+        false,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false
+      ]
+    },
+    {
+      "frame": 939,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false
+      ]
+    },
+    {
+      "frame": 949,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
+    },
+    {
+      "frame": 954,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true
+      ]
+    },
+    {
+      "frame": 1046,
+      "joypad_0": [
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true
+      ]
+    },
+    {
+      "frame": 1092,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
+    },
+    {
+      "frame": 1096,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false
+      ]
+    },
+    {
+      "frame": 1194,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
+    },
+    {
+      "frame": 1231,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true
+      ]
+    },
+    {
+      "frame": 1253,
+      "joypad_0": [
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true
+      ]
+    },
+    {
+      "frame": 1294,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true
+      ]
+    },
+    {
+      "frame": 1305,
+      "joypad_0": [
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true
+      ]
+    },
+    {
+      "frame": 1337,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true
+      ]
+    },
+    {
+      "frame": 1350,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
+    },
+    {
+      "frame": 1361,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        false
+      ]
+    },
+    {
+      "frame": 1363,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
+    },
+    {
+      "frame": 1374,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true
+      ]
+    },
+    {
+      "frame": 1381,
+      "joypad_0": [
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true
+      ]
+    },
+    {
+      "frame": 1405,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true
+      ]
+    },
+    {
+      "frame": 1529,
+      "joypad_0": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
+    }
+  ]
+}

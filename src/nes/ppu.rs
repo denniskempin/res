@@ -82,7 +82,6 @@ pub struct Ppu {
     pub vblank: bool,
 
     pub framebuffer: Framebuffer,
-    pub skip_rendering: bool,
 }
 
 impl Default for Ppu {
@@ -117,7 +116,6 @@ impl Ppu {
             vblank: false,
 
             framebuffer: Framebuffer::default(),
-            skip_rendering: false,
         }
     }
 
@@ -249,9 +247,6 @@ impl Ppu {
     }
 
     pub fn render_scanline(&mut self) -> PpuResult<bool> {
-        if self.skip_rendering {
-            return Ok(false);
-        }
         let screen_y = self.scanline as usize;
         let mut sprite_0_hit = false;
 
