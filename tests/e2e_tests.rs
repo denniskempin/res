@@ -1,4 +1,3 @@
-use std::path::Path;
 use std::path::PathBuf;
 
 use image::RgbaImage;
@@ -7,17 +6,36 @@ use res::nes::System;
 
 #[test]
 pub fn test_nestest() {
-    let mut system = System::with_ines(Path::new("tests/e2e/nestest.nes")).unwrap();
-    system.playback_from_file(Path::new("tests/e2e/nestest.recording.json"));
-    execute_and_compare_screenshots("nestest", &mut system, &[60, 90]);
+    test_playback("nestest", &[60, 90]);
 }
 
-pub fn execute_and_compare_screenshots(name: &str, system: &mut System, frame_numbers: &[usize]) {
+#[test]
+pub fn test_donkey_kong() {
+    test_playback("donkey_kong", &[100, 1000, 2000, 3000]);
+}
+
+fn test_playback(name: &str, frame_numbers: &[usize]) {
+    let rom_path = PathBuf::from(&format!("tests/e2e/{name}.nes"));
+    let recording_path = PathBuf::from(&format!("tests/e2e/{name}.recording.json"));
+    if !rom_path.exists() {
+        return;
+    }
+    let mut system = System::with_ines(&rom_path).unwrap();
+    system.playback_from_file(&recording_path);
+    execute_and_compare_screenshots(name, &mut system, frame_numbers);
+}
+
+fn execute_and_compare_screenshots(name: &str, system: &mut System, frame_numbers: &[usize]) {
     for frame_number in frame_numbers {
-        while system.ppu().frame != *frame_number {
+        // Don't render while skipping frames to make test run faster.
+        system.cpu.bus.ppu.skip_rendering = true;
+        while system.ppu().frame < *frame_number - 1 {
             system.update_buttons([false; 8]);
             system.execute_one_frame().unwrap();
         }
+        system.cpu.bus.ppu.skip_rendering = false;
+        system.update_buttons([false; 8]);
+        system.execute_one_frame().unwrap();
         compare_to_golden(
             &system.ppu().framebuffer.as_rgba_image(),
             &format!("{name}-{frame_number}")
@@ -25,7 +43,7 @@ pub fn execute_and_compare_screenshots(name: &str, system: &mut System, frame_nu
     } 
 }
 
-pub fn compare_to_golden(image: &RgbaImage, name: &str) {
+fn compare_to_golden(image: &RgbaImage, name: &str) {
     let path_prefix = PathBuf::from("tests/e2e").join(name);
     let golden_path = path_prefix.with_extension("png");
     if golden_path.exists() {
