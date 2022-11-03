@@ -30,6 +30,7 @@ wasm-timer = "0.2"
 itertools = "0.10"
 intbits = "0.2"
 thiserror = "1.0"
+argh = "0.1"
 
 [dev-dependencies]
 criterion = "0.3"

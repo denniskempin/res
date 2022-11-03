@@ -5,8 +5,19 @@ use std::io::Read;
 
 use egui::vec2;
 use res::app::EmulatorApp;
+use argh::FromArgs;
+
+/// Rust Entertainment System
+#[derive(FromArgs)]
+struct ResArgs {
+    /// rom file to load
+    #[argh(positional)]
+    rom: Option<String>,
+}
 
 fn main() {
+    let args: ResArgs = argh::from_env();
+    
     // Log to stdout (if you run with `RUST_LOG=debug`).
     tracing_subscriber::fmt::init();
 
@@ -16,11 +27,12 @@ fn main() {
         ..Default::default()
     };
 
-    let rom = std::env::args().nth(1).map(|path| {
+    let rom = args.rom.map(|path| {
         let mut data: Vec<u8> = Vec::new();
         File::open(path).unwrap().read_to_end(&mut data).unwrap();
         data
     });
+
 
     eframe::run_native(
         "NES Emulator",
