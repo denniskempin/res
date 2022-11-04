@@ -317,7 +317,7 @@ impl Ppu {
     pub fn vram_addr_to_idx(&self, addr: u16) -> usize {
         addr as usize - 0x2000
     }
-    
+
     pub fn peek_slice(&self, addr: u16, length: u16) -> impl Iterator<Item = Option<u8>> + '_ {
         (addr..(addr + length)).map(|addr| self.peek_ppu_memory(addr))
     }
@@ -331,7 +331,8 @@ impl Ppu {
     }
 
     pub fn read_ppu_memory(&self, addr: u16) -> PpuResult<u8> {
-        self.peek_ppu_memory(addr).ok_or(PpuError::InvalidBusRead(addr))
+        self.peek_ppu_memory(addr)
+            .ok_or(PpuError::InvalidBusRead(addr))
     }
 
     pub fn write_ppu_memory(&mut self, addr: u16, value: u8) -> PpuResult<()> {
@@ -509,7 +510,9 @@ impl Ppu {
                     for fine_y in 0..8_usize {
                         let img_y = coarse_y * 8 + fine_y;
                         let pattern_id = coarse_y * 8 + coarse_x;
-                        if let Ok(row) = Pattern::new(bank as u8, pattern_id as u8).row_pixels(self, fine_y) {
+                        if let Ok(row) =
+                            Pattern::new(bank as u8, pattern_id as u8).row_pixels(self, fine_y)
+                        {
                             for (fine_x, pixel) in row.enumerate() {
                                 let img_x = bank * (16 * 8) + coarse_x * 8 + fine_x;
                                 image[(img_x, img_y)] = PATTERN_PALETTE[pixel as usize];

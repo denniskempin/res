@@ -5,16 +5,25 @@ use res::nes::System;
 
 #[test]
 pub fn test_nestest() {
+    // Tests basic rendering with an open source ROM.
     test_playback("nestest", &[60, 90]);
 }
 
 #[test]
+pub fn test_alter_ego() {
+    // Tests gameplay with an open source ROM.
+    test_playback("alter_ego", &[100, 600, 1000, 1500]);
+}
+
+#[test]
 pub fn test_donkey_kong() {
+    // Basic gameplay with a real ROM.
     test_playback("donkey_kong", &[100, 1000, 2000]);
 }
 
 #[test]
 pub fn test_super_mario_bros() {
+    // Vertical mirroring and scrolling.
     test_playback(
         "super_mario_bros",
         &[

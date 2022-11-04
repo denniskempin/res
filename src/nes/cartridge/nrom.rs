@@ -76,12 +76,8 @@ impl Mapper for NromMapper {
             .ok_or(CartridgeError::InvalidRead(addr))
     }
 
-    fn ppu_bus_write(&mut self, addr: u16, value: u8) -> CartridgeResult<()> {
-        if (addr as usize) < self.chr.len() {
-            self.chr[addr as usize] = value;
-            Ok(())
-        } else {
-            Err(CartridgeError::InvalidWrite(addr))
-        }
+    fn ppu_bus_write(&mut self, _addr: u16, _value: u8) -> CartridgeResult<()> {
+        // Some games will try to write to character ROM and expect it to NOOP.
+        Ok(())
     }
 }
