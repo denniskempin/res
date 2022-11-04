@@ -24,14 +24,8 @@ pub enum PpuError {
     InvalidBusWrite(u16),
     #[error("Invalid peek from 0x{0:04X}")]
     InvalidBusPeek(u16),
-    #[error("Cartridge Error")]
-    CartridgeError(CartridgeError),
-}
-
-impl From<CartridgeError> for PpuError {
-    fn from(e: CartridgeError) -> Self {
-        PpuError::CartridgeError(e)
-    }
+    #[error(transparent)]
+    CartridgeError(#[from] CartridgeError),
 }
 
 impl std::fmt::Debug for PpuError {
@@ -323,13 +317,21 @@ impl Ppu {
     pub fn vram_addr_to_idx(&self, addr: u16) -> usize {
         addr as usize - 0x2000
     }
+    
+    pub fn peek_slice(&self, addr: u16, length: u16) -> impl Iterator<Item = Option<u8>> + '_ {
+        (addr..(addr + length)).map(|addr| self.peek_ppu_memory(addr))
+    }
+
+    pub fn peek_ppu_memory(&self, addr: u16) -> Option<u8> {
+        match addr {
+            0..=0x1FFF => self.cartridge.borrow_mut().ppu_bus_peek(addr),
+            0x2000..=0x3FFF => Some(self.vram[self.vram_addr_to_idx(addr)]),
+            _ => None,
+        }
+    }
 
     pub fn read_ppu_memory(&self, addr: u16) -> PpuResult<u8> {
-        match addr {
-            0..=0x1FFF => Ok(self.cartridge.borrow_mut().ppu_bus_read(addr)?),
-            0x2000..=0x3FFF => Ok(self.vram[self.vram_addr_to_idx(addr)]),
-            _ => Err(PpuError::InvalidBusRead(addr)),
-        }
+        self.peek_ppu_memory(addr).ok_or(PpuError::InvalidBusRead(addr))
     }
 
     pub fn write_ppu_memory(&mut self, addr: u16, value: u8) -> PpuResult<()> {
@@ -495,6 +497,27 @@ impl Ppu {
                 addr.increment_x();
             }
             addr.increment_y();
+        }
+        image
+    }
+
+    pub fn debug_render_pattern_table(&self) -> ColorImage {
+        let mut image = ColorImage::new([32 * 8, 16 * 8], Color32::TRANSPARENT);
+        for bank in 0..=1_usize {
+            for coarse_x in 0..16_usize {
+                for coarse_y in 0..16_usize {
+                    for fine_y in 0..8_usize {
+                        let img_y = coarse_y * 8 + fine_y;
+                        let pattern_id = coarse_y * 8 + coarse_x;
+                        if let Ok(row) = Pattern::new(bank as u8, pattern_id as u8).row_pixels(self, fine_y) {
+                            for (fine_x, pixel) in row.enumerate() {
+                                let img_x = bank * (16 * 8) + coarse_x * 8 + fine_x;
+                                image[(img_x, img_y)] = PATTERN_PALETTE[pixel as usize];
+                            }
+                        }
+                    }
+                }
+            }
         }
         image
     }
@@ -868,6 +891,13 @@ impl MaskRegister {
 
 ////////////////////////////////////////////////////////////////////////////////
 // Palette Lookup Table
+
+pub static PATTERN_PALETTE: [Color32; 4] = [
+    Color32::from_rgb(0x00, 0x00, 0x00),
+    Color32::from_rgb(0xFF, 0x00, 0x00),
+    Color32::from_rgb(0x00, 0xFF, 0x00),
+    Color32::from_rgb(0x00, 0x00, 0xFF),
+];
 
 pub static SYSTEM_PALETTE: [Color32; 64] = [
     Color32::from_rgb(0x80, 0x80, 0x80),

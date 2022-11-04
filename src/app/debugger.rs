@@ -24,12 +24,15 @@ use crate::util::RingBuffer;
 
 pub struct Debugger {
     nametable_texture: TextureHandle,
+    pattern_texture: TextureHandle,
 
     command: Option<DebugCommand>,
     previous_states: RingBuffer<System, 256>,
 
     inspector_is_open: bool,
     scroll_to_memory_location: Option<u16>,
+
+    ppu_inspector_is_open: bool,
 
     error_modal_text: String,
     error_modal_open: bool,
@@ -39,10 +42,14 @@ impl Debugger {
     pub fn new(cc: &CreationContext<'_>) -> Self {
         Debugger {
             nametable_texture: cc.egui_ctx.load_texture("Nametable", ColorImage::example()),
+            pattern_texture: cc
+                .egui_ctx
+                .load_texture("Pattern Table", ColorImage::example()),
             command: None,
             previous_states: RingBuffer::default(),
             scroll_to_memory_location: None,
             inspector_is_open: false,
+            ppu_inspector_is_open: false,
             error_modal_text: String::new(),
             error_modal_open: false,
         }
@@ -126,7 +133,7 @@ impl Debugger {
                 ui.label(self.error_modal_text.clone());
             });
 
-        egui::Window::new("CPU Bus")
+        egui::Window::new("CPU Memory")
             .open(&mut self.inspector_is_open)
             .show(ui.ctx(), |ui| {
                 ui.style_mut().override_font_id = Some(FontId::monospace(14.0));
@@ -154,7 +161,44 @@ impl Debugger {
                     for row in row_range {
                         let addr = (row * bytes_per_line) as u16;
                         let bytes = emulator.cpu().bus.peek_slice(addr, bytes_per_line as u16);
-                        let bytes_str = bytes.map(|s| format!("{:02X}", s.unwrap())).join(" ");
+                        let bytes_str = bytes.map(|s| format!("{:02X}", s.unwrap_or_default())).join(" ");
+                        ui.add(
+                            Label::new(RichText::new(format!("{:04X}: {}", addr, bytes_str)))
+                                .wrap(false),
+                        );
+                    }
+                });
+            });
+
+        egui::Window::new("PPU Memory")
+            .open(&mut self.ppu_inspector_is_open)
+            .show(ui.ctx(), |ui| {
+                ui.style_mut().override_font_id = Some(FontId::monospace(14.0));
+                ui.add(
+                    Label::new(RichText::new(
+                        "      00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F",
+                    ))
+                    .wrap(false),
+                );
+
+                let text_style = TextStyle::Body;
+                let row_height = ui.text_style_height(&text_style);
+                let bytes_per_line: usize = 16;
+                let num_rows = 0xFFFF / bytes_per_line;
+
+                let mut scroll = ScrollArea::vertical();
+                if let Some(location) = self.scroll_to_memory_location {
+                    let coarse_location = (location / bytes_per_line as u16) as f32;
+                    self.scroll_to_memory_location = None;
+                    scroll = scroll.vertical_scroll_offset(
+                        coarse_location * (row_height + ui.spacing().item_spacing.y),
+                    );
+                }
+                scroll.show_rows(ui, row_height, num_rows, |ui, row_range| {
+                    for row in row_range {
+                        let addr = (row * bytes_per_line) as u16;
+                        let bytes = emulator.ppu().peek_slice(addr, bytes_per_line as u16);
+                        let bytes_str = bytes.map(|s| format!("{:02X}", s.unwrap_or_default())).join(" ");
                         ui.add(
                             Label::new(RichText::new(format!("{:04X}: {}", addr, bytes_str)))
                                 .wrap(false),
@@ -184,14 +228,21 @@ impl Debugger {
 
                 self.nametable_texture
                     .set(emulator.ppu().debug_render_nametable());
-                ui.image(&self.nametable_texture, vec2(420.0, 420.0));
+                ui.image(&self.nametable_texture, vec2(400.0, 220.0));
+            });
+            ui.vertical(|ui| {
+                ui.label(RichText::new("Pattern Table").strong());
+
+                self.pattern_texture
+                    .set(emulator.ppu().debug_render_pattern_table());
+                ui.image(&self.pattern_texture, vec2(400.0, 220.0));
             });
 
             self.ppu_panel(ui, emulator);
         });
     }
 
-    fn cpu_panel(&self, ui: &mut Ui, emulator: &System) {
+    fn cpu_panel(&mut self, ui: &mut Ui, emulator: &System) {
         ui.label(RichText::new("CPU").strong());
         let cpu = emulator.cpu();
 
@@ -212,6 +263,9 @@ impl Debugger {
         for line in &cpu.peek_stack().chunks(8) {
             let line_str = line.map(|s| format!("{:02X}", s)).join(" ");
             ui.label(line_str);
+        }
+        if ui.button("CPU Memory").clicked() {
+            self.inspector_is_open = !self.inspector_is_open;
         }
     }
 
@@ -265,13 +319,13 @@ impl Debugger {
 
     fn palette_table(&self, ui: &mut Ui, emulator: &System) {
         ui.vertical(|ui| {
-            ui.set_max_width(160.0);
+            ui.set_max_width(120.0);
             ui.label(RichText::new("Color Palette").strong());
             for palette_id in 0..8 {
                 ui.columns(4, |cols| {
                     for (color_id, col) in cols.iter_mut().enumerate() {
                         let (rect, response) = col.allocate_exact_size(
-                            vec2(32.0, 24.0),
+                            vec2(24.0, 24.0),
                             Sense::focusable_noninteractive(),
                         );
                         response.on_hover_text(format!("Color {color_id} of palette {palette_id}"));
@@ -347,19 +401,23 @@ impl Debugger {
         });
     }
 
-    fn ppu_panel(&self, ui: &mut Ui, emulator: &System) {
+    fn ppu_panel(&mut self, ui: &mut Ui, emulator: &System) {
         ui.vertical(|ui| {
             ui.label(RichText::new("PPU").strong());
             let ppu = emulator.ppu();
-            let vblank = if ppu.vblank { "(vblank)" } else { "" };
+            ui.label(format!("Frame: {:}", ppu.frame));
+            let vblank = if ppu.vblank { "(vbl)" } else { "" };
             ui.label(format!(
-                "Frame: {:6}, Scanline: {:03}, Cycle: {:03} {}",
-                ppu.frame, ppu.scanline, ppu.cycle, vblank
+                "Scanline: {:03}, Cycle: {:03} {}",
+                ppu.scanline, ppu.cycle, vblank
             ));
             ui.label(format!("V: {:}", ppu.v_register));
             ui.label(format!("T: {:}", ppu.t_register));
             ui.label(format!("Status: {}", ppu.status_register.pretty_print()));
             ui.label(format!("Mask: {}", ppu.mask_register.pretty_print()));
+            if ui.button("PPU Memory").clicked() {
+                self.ppu_inspector_is_open = !self.ppu_inspector_is_open;
+            }
         });
     }
 }
