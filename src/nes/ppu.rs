@@ -408,9 +408,7 @@ impl Ppu {
             }
             DATA_REGISTER_ADDR => self.read_data_register(),
             STATUS_REGISTER_ADDR => self.read_status_register(),
-            _ => self
-                .cpu_bus_peek(addr)
-                .ok_or(PpuError::InvalidBusPeek(addr)),
+            _ => Ok(self.cpu_bus_peek(addr).unwrap_or_default()),
         }
     }
 

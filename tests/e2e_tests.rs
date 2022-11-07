@@ -23,7 +23,7 @@ pub fn test_donkey_kong() {
 
 #[test]
 pub fn test_super_mario_bros() {
-    // Vertical mirroring and scrolling.
+    // Horizontal mirroring and scrolling.
     test_playback(
         "super_mario_bros",
         &[
@@ -32,6 +32,12 @@ pub fn test_super_mario_bros() {
             374, 389, 395,
         ],
     );
+}
+
+#[test]
+pub fn test_ice_climber() {
+    // Tests vertical scrolling.
+    test_playback("ice_climber", &[100, 1450, 1550, 1650]);
 }
 
 fn test_playback(name: &str, frame_numbers: &[usize]) {

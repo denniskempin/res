@@ -49,8 +49,7 @@ impl Mapper for NromMapper {
     }
 
     fn cpu_bus_read(&mut self, addr: u16) -> CartridgeResult<u8> {
-        self.cpu_bus_peek(addr)
-            .ok_or(CartridgeError::InvalidRead(addr))
+        Ok(self.cpu_bus_peek(addr).unwrap_or_default())
     }
 
     fn cpu_bus_write(&mut self, addr: u16, value: u8) -> CartridgeResult<()> {

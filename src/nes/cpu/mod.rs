@@ -91,7 +91,7 @@ impl CpuBus {
             0x4000..=0x4015 => Ok(self.apu.cpu_bus_read(addr)),
             0x4016 => Ok(self.joypad0.cpu_bus_read()),
             0x4017 => Ok(self.joypad1.cpu_bus_read()),
-            0x8000..=0xFFFF => Ok(self.cartridge.borrow_mut().cpu_bus_read(addr)?),
+            0x4020..=0xFFFF => Ok(self.cartridge.borrow_mut().cpu_bus_read(addr)?),
             _ => Err(ExecError::InvalidCpuBusRead(addr)),
         }
     }
@@ -122,7 +122,7 @@ impl CpuBus {
             0x4015 => self.apu.cpu_bus_write(0x4015, value),
             0x4016 => self.joypad0.cpu_bus_write(value),
             0x4017 => self.joypad1.cpu_bus_write(value),
-            0x6000..=0xFFFF => self.cartridge.borrow_mut().cpu_bus_write(addr, value)?,
+            0x4020..=0xFFFF => self.cartridge.borrow_mut().cpu_bus_write(addr, value)?,
             _ => return Err(ExecError::InvalidCpuBusWrite(addr)),
         };
         Ok(())
@@ -138,7 +138,7 @@ impl CpuBus {
             0x4015 => Some(self.apu.cpu_bus_peek(0x4015)),
             0x4016 => Some(self.joypad0.cpu_bus_peek()),
             0x4017 => Some(self.joypad1.cpu_bus_peek()),
-            0x6000..=0xFFFF => self.cartridge.borrow().cpu_bus_peek(addr),
+            0x4020..=0xFFFF => self.cartridge.borrow().cpu_bus_peek(addr),
             _ => None,
         }
     }
