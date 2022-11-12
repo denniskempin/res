@@ -7,7 +7,6 @@ use eframe::wasm_bindgen::JsValue;
 use web_sys;
 
 use crate::app::EmulatorApp;
-use crate::nes::System;
 
 pub fn save_rom_in_local_storage(rom: &[u8]) {
     let storage = web_sys::window().unwrap().local_storage().unwrap().unwrap();

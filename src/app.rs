@@ -1,3 +1,4 @@
+mod audio;
 mod debugger;
 
 use std::ffi::OsStr;
@@ -19,6 +20,7 @@ use egui::Sense;
 use egui::TextureHandle;
 use egui::Ui;
 
+use self::audio::AudioEngine;
 use self::debugger::Debugger;
 use crate::nes::joypad::JoypadButton;
 use crate::nes::Record;
@@ -30,6 +32,7 @@ pub struct EmulatorApp {
     framebuffer_texture: TextureHandle,
     debug_mode: bool,
     debug_state: Debugger,
+    audio_engine: AudioEngine,
 }
 
 impl EmulatorApp {
@@ -49,6 +52,7 @@ impl EmulatorApp {
                 .load_texture("Framebuffer", ColorImage::example()),
             debug_mode: true,
             debug_state: Debugger::new(cc),
+            audio_engine: AudioEngine::new(),
         }
     }
 
@@ -109,6 +113,9 @@ impl EmulatorApp {
     fn menu_bar(&mut self, ui: &mut Ui) {
         ui.columns(2, |columns| {
             columns[0].with_layout(Layout::left_to_right(), |ui| {
+                if ui.button("Play Audio").clicked() {
+                    self.audio_engine.start();
+                }
                 ui.menu_button("Programs", |_ui| {});
                 ui.menu_button("Games", |_ui| {});
                 ui.label("(Or drop a .nes file to load it)");

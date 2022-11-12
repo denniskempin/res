@@ -97,7 +97,7 @@ impl Cartridge {
             return Err(anyhow!("Expected NES header."));
         }
         let mapper_id = header.lower_mapper | (header.upper_mapper << 4);
-        println!("Loading iNES (mapper {:}): {:?}", mapper_id, header);
+        println!("Loading iNES (mapper {:}): {:#?}", mapper_id, header);
         let prg_len = header.prg_size as usize * 16 * 1024;
         let chr_len = header.chr_size as usize * 8 * 1024;
         self.mirroring_mode = if header.mirroring {
