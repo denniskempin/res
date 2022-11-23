@@ -22,6 +22,88 @@ use crate::nes::ppu::SYSTEM_PALETTE;
 use crate::nes::System;
 use crate::util::RingBuffer;
 
+#[derive(Default)]
+pub struct Alert {
+    text: String,
+    is_open: bool,
+}
+
+impl Alert {
+    pub fn render(&mut self, ui: &mut Ui) {
+        egui::Window::new("Error")
+            .open(&mut self.is_open)
+            .show(ui.ctx(), |ui| {
+                ui.label(self.text.clone());
+            });
+    }
+
+    pub fn show(&mut self, text: &str) {
+        self.text = text.to_string();
+        self.is_open = true;
+    }
+}
+
+struct MemoryViewer {
+    title: String,
+    is_open: bool,
+    scroll_to_location: Option<u16>,
+}
+
+impl MemoryViewer {
+    pub fn new(title: &str) -> Self {
+        Self {
+            title: title.to_string(),
+            is_open: false,
+            scroll_to_location: None,
+        }
+    }
+
+    pub fn show<F, I>(&mut self, ui: &mut Ui, peek_slice: F)
+    where
+        I: Iterator<Item = Option<u8>>,
+        F: Fn(u16, usize) -> I,
+    {
+        egui::Window::new(&self.title)
+            .open(&mut self.is_open)
+            .show(ui.ctx(), |ui| {
+                ui.style_mut().override_font_id = Some(FontId::monospace(14.0));
+                ui.add(
+                    Label::new(RichText::new(
+                        "      00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F",
+                    ))
+                    .wrap(false),
+                );
+
+                let text_style = TextStyle::Body;
+                let row_height = ui.text_style_height(&text_style);
+                let bytes_per_line: usize = 16;
+                let num_rows = 0xFFFF / bytes_per_line;
+
+                let mut scroll = ScrollArea::vertical();
+                if let Some(location) = self.scroll_to_location {
+                    let coarse_location = (location / bytes_per_line as u16) as f32;
+                    self.scroll_to_location = None;
+                    scroll = scroll.vertical_scroll_offset(
+                        coarse_location * (row_height + ui.spacing().item_spacing.y),
+                    );
+                }
+                scroll.show_rows(ui, row_height, num_rows, |ui, row_range| {
+                    for row in row_range {
+                        let addr = (row * bytes_per_line) as u16;
+                        let bytes = peek_slice(addr, bytes_per_line);
+                        let bytes_str = bytes
+                            .map(|s| format!("{:02X}", s.unwrap_or_default()))
+                            .join(" ");
+                        ui.add(
+                            Label::new(RichText::new(format!("{:04X}: {}", addr, bytes_str)))
+                                .wrap(false),
+                        );
+                    }
+                });
+            });
+    }
+}
+
 pub struct Debugger {
     nametable_texture: TextureHandle,
     pattern_texture: TextureHandle,
@@ -29,13 +111,9 @@ pub struct Debugger {
     command: Option<DebugCommand>,
     previous_states: RingBuffer<System, 256>,
 
-    inspector_is_open: bool,
-    scroll_to_memory_location: Option<u16>,
-
-    ppu_inspector_is_open: bool,
-
-    error_modal_text: String,
-    error_modal_open: bool,
+    alert: Alert,
+    cpu_memory_viewer: MemoryViewer,
+    ppu_memory_viewer: MemoryViewer,
 }
 
 impl Debugger {
@@ -47,11 +125,9 @@ impl Debugger {
                 .load_texture("Pattern Table", ColorImage::example()),
             command: None,
             previous_states: RingBuffer::default(),
-            scroll_to_memory_location: None,
-            inspector_is_open: false,
-            ppu_inspector_is_open: false,
-            error_modal_text: String::new(),
-            error_modal_open: false,
+            alert: Alert::default(),
+            cpu_memory_viewer: MemoryViewer::new("CPU Memory"),
+            ppu_memory_viewer: MemoryViewer::new("PPU Memory"),
         }
     }
 
@@ -107,97 +183,20 @@ impl Debugger {
     pub fn run_emulator(&mut self, emulator: &mut System) {
         if let Some(command) = self.command {
             if let Err(error) = self.run_command(emulator, command) {
-                self.error_modal_text = format!("{:?}", error);
-                self.error_modal_open = true;
+                self.alert.show(&error.to_string());
                 self.command = None;
             }
         }
     }
 
     pub fn modals(&mut self, ui: &mut Ui, emulator: &System) {
-        egui::Window::new("Error")
-            .open(&mut self.error_modal_open)
-            .show(ui.ctx(), |ui| {
-                ui.label(self.error_modal_text.clone());
-            });
-
-        egui::Window::new("CPU Memory")
-            .open(&mut self.inspector_is_open)
-            .show(ui.ctx(), |ui| {
-                ui.style_mut().override_font_id = Some(FontId::monospace(14.0));
-                ui.add(
-                    Label::new(RichText::new(
-                        "      00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F",
-                    ))
-                    .wrap(false),
-                );
-
-                let text_style = TextStyle::Body;
-                let row_height = ui.text_style_height(&text_style);
-                let bytes_per_line: usize = 16;
-                let num_rows = 0xFFFF / bytes_per_line;
-
-                let mut scroll = ScrollArea::vertical();
-                if let Some(location) = self.scroll_to_memory_location {
-                    let coarse_location = (location / bytes_per_line as u16) as f32;
-                    self.scroll_to_memory_location = None;
-                    scroll = scroll.vertical_scroll_offset(
-                        coarse_location * (row_height + ui.spacing().item_spacing.y),
-                    );
-                }
-                scroll.show_rows(ui, row_height, num_rows, |ui, row_range| {
-                    for row in row_range {
-                        let addr = (row * bytes_per_line) as u16;
-                        let bytes = emulator.cpu().bus.peek_slice(addr, bytes_per_line as u16);
-                        let bytes_str = bytes
-                            .map(|s| format!("{:02X}", s.unwrap_or_default()))
-                            .join(" ");
-                        ui.add(
-                            Label::new(RichText::new(format!("{:04X}: {}", addr, bytes_str)))
-                                .wrap(false),
-                        );
-                    }
-                });
-            });
-
-        egui::Window::new("PPU Memory")
-            .open(&mut self.ppu_inspector_is_open)
-            .show(ui.ctx(), |ui| {
-                ui.style_mut().override_font_id = Some(FontId::monospace(14.0));
-                ui.add(
-                    Label::new(RichText::new(
-                        "      00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F",
-                    ))
-                    .wrap(false),
-                );
-
-                let text_style = TextStyle::Body;
-                let row_height = ui.text_style_height(&text_style);
-                let bytes_per_line: usize = 16;
-                let num_rows = 0xFFFF / bytes_per_line;
-
-                let mut scroll = ScrollArea::vertical();
-                if let Some(location) = self.scroll_to_memory_location {
-                    let coarse_location = (location / bytes_per_line as u16) as f32;
-                    self.scroll_to_memory_location = None;
-                    scroll = scroll.vertical_scroll_offset(
-                        coarse_location * (row_height + ui.spacing().item_spacing.y),
-                    );
-                }
-                scroll.show_rows(ui, row_height, num_rows, |ui, row_range| {
-                    for row in row_range {
-                        let addr = (row * bytes_per_line) as u16;
-                        let bytes = emulator.ppu().peek_slice(addr, bytes_per_line as u16);
-                        let bytes_str = bytes
-                            .map(|s| format!("{:02X}", s.unwrap_or_default()))
-                            .join(" ");
-                        ui.add(
-                            Label::new(RichText::new(format!("{:04X}: {}", addr, bytes_str)))
-                                .wrap(false),
-                        );
-                    }
-                });
-            });
+        self.alert.render(ui);
+        self.cpu_memory_viewer.show(ui, |addr, length| {
+            emulator.cpu.bus.peek_slice(addr, length as u16)
+        });
+        self.ppu_memory_viewer.show(ui, |addr, length| {
+            emulator.ppu().peek_slice(addr, length as u16)
+        });
     }
 
     pub fn right_debug_panel(&mut self, ui: &mut Ui, emulator: &System) {
@@ -257,7 +256,7 @@ impl Debugger {
             ui.label(line_str);
         }
         if ui.button("CPU Memory").clicked() {
-            self.inspector_is_open = !self.inspector_is_open;
+            self.cpu_memory_viewer.is_open = true;
         }
     }
 
@@ -293,8 +292,8 @@ impl Debugger {
                     if widget.clicked() {
                         let addr =
                             u16::from_str_radix(part.strip_prefix('$').unwrap(), 16).unwrap();
-                        self.scroll_to_memory_location = Some(addr);
-                        self.inspector_is_open = true;
+                        self.cpu_memory_viewer.scroll_to_location = Some(addr);
+                        self.cpu_memory_viewer.is_open = true;
                     }
                 } else if part.starts_with('#') {
                     text = text.color(Color32::LIGHT_GREEN);
@@ -408,7 +407,7 @@ impl Debugger {
             ui.label(format!("Status: {}", ppu.status_register.pretty_print()));
             ui.label(format!("Mask: {}", ppu.mask_register.pretty_print()));
             if ui.button("PPU Memory").clicked() {
-                self.ppu_inspector_is_open = !self.ppu_inspector_is_open;
+                self.ppu_memory_viewer.is_open = !self.ppu_memory_viewer.is_open;
             }
         });
     }
