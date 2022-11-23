@@ -1,5 +1,5 @@
 mod audio;
-mod debugger;
+mod debugger_ui;
 
 use std::ffi::OsStr;
 use std::fs;
@@ -21,7 +21,7 @@ use egui::TextureHandle;
 use egui::Ui;
 
 use self::audio::AudioEngine;
-use self::debugger::Debugger;
+use self::debugger_ui::Debugger;
 use crate::nes::joypad::JoypadButton;
 use crate::nes::Record;
 use crate::nes::System;
@@ -44,7 +44,7 @@ impl EmulatorApp {
             emulator: if let Some(rom) = rom {
                 System::with_ines_bytes(&rom).unwrap()
             } else {
-                System::default()
+                System::new()
             },
             loaded,
             framebuffer_texture: cc

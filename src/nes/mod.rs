@@ -1,6 +1,7 @@
 pub mod apu;
 pub mod cartridge;
 pub mod cpu;
+pub mod debugger;
 pub mod joypad;
 pub mod ppu;
 pub mod trace;
@@ -9,12 +10,13 @@ use std::cell::RefCell;
 use std::fs;
 use std::path::Path;
 
+use anyhow::anyhow;
+use anyhow::Result;
 use serde::Deserialize;
 use serde::Serialize;
 
 use self::cartridge::Cartridge;
 use self::cpu::Cpu;
-use self::cpu::ExecResult;
 use self::cpu::Operation;
 use self::ppu::Ppu;
 use self::trace::Trace;
@@ -38,6 +40,13 @@ pub struct System {
 }
 
 impl System {
+    pub fn new() -> Self {
+        Self {
+            cpu: Cpu::new(),
+            record_to: None,
+            playback_from: None,
+        }
+    }
     pub fn cpu(&self) -> &Cpu {
         &self.cpu
     }
@@ -50,7 +59,7 @@ impl System {
         &self.cpu.bus.cartridge
     }
 
-    pub fn tick(&mut self) -> ExecResult<bool> {
+    pub fn tick(&mut self) -> Result<bool> {
         self.cpu.execute_one()
     }
 
@@ -120,8 +129,8 @@ impl System {
         }
     }
 
-    pub fn with_program(program: &[u8]) -> ExecResult<System> {
-        let mut system = System::default();
+    pub fn with_program(program: &[u8]) -> Result<System> {
+        let mut system = System::new();
         system
             .cpu
             .bus
@@ -133,13 +142,13 @@ impl System {
         Ok(system)
     }
 
-    pub fn with_ines(path: &Path) -> ExecResult<System> {
+    pub fn with_ines(path: &Path) -> Result<System> {
         let ines_file = fs::read(path).unwrap();
         System::with_ines_bytes(&ines_file)
     }
 
-    pub fn with_ines_bytes(bytes: &[u8]) -> ExecResult<System> {
-        let mut system = System::default();
+    pub fn with_ines_bytes(bytes: &[u8]) -> Result<System> {
+        let mut system = System::new();
         system
             .cpu
             .bus
@@ -152,42 +161,58 @@ impl System {
         Ok(system)
     }
 
-    pub fn with_snapshot(snapshot: &[u8]) -> ExecResult<System> {
+    pub fn with_snapshot(snapshot: &[u8]) -> Result<System> {
         Ok(System {
             cpu: bincode::decode_from_slice(snapshot, bincode::config::standard())
                 .unwrap()
                 .0,
-            ..Default::default()
+            ..System::new()
         })
     }
 
-    pub fn execute_until_halt(&mut self) -> ExecResult<()> {
-        while self.cpu.execute_one()? {
-            println!("{:?}", self.trace());
+    pub fn execute_until<F>(&mut self, should_break: F) -> Result<()>
+    where
+        F: Fn(&Cpu) -> bool,
+    {
+        self.cpu.debugger.borrow_mut().start_execution();
+        loop {
+            if self.cpu.halt {
+                return Err(anyhow!("CPU halted"));
+            }
+
+            self.cpu.execute_one().unwrap();
+
+            if should_break(&self.cpu) {
+                return Ok(());
+            }
+
+            if self.cpu.debugger.borrow().should_break() {
+                println!("Breakpoint: {}", self.cpu.debugger.borrow().break_message());
+                return Err(anyhow!(
+                    "Breakpoint: {}",
+                    self.cpu.debugger.borrow().break_message()
+                ));
+            }
         }
-        Ok(())
     }
 
-    pub fn execute_one_frame(&mut self) -> ExecResult<()> {
-        // Finish current frame until we enter vblank
-        while !self.cpu.bus.ppu.vblank {
-            self.cpu.execute_one()?;
-        }
-        // Execute current vblank perior until we reach the next frame.
-        while self.cpu.bus.ppu.vblank {
-            self.cpu.execute_one()?;
-        }
-        Ok(())
+    pub fn execute_until_halt(&mut self) -> Result<()> {
+        self.execute_until(|cpu| cpu.halt)
     }
 
-    pub fn execute_frames(&mut self, num_frames: usize) -> ExecResult<()> {
+    pub fn execute_one_frame(&mut self) -> Result<()> {
+        let current_frame = self.ppu().frame;
+        self.execute_until(|cpu| cpu.bus.ppu.frame > current_frame)
+    }
+
+    pub fn execute_frames(&mut self, num_frames: usize) -> Result<()> {
         for _ in 0..num_frames {
             self.execute_one_frame()?;
         }
         Ok(())
     }
 
-    pub fn reset(&mut self) -> ExecResult<()> {
+    pub fn reset(&mut self) -> Result<()> {
         self.cpu.program_counter = self.cpu.bus.read_u16(0xFFFC_u16)?;
         Ok(())
     }

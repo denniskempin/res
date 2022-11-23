@@ -77,7 +77,7 @@ pub fn test_nestest_snapshot() {
 
 #[test]
 pub fn test_ops_dont_panic() {
-    let mut system = System::default();
+    let mut system = System::new();
     let cpu = &mut system.cpu;
     for op in 0..0xFFFF_u16 {
         let bytes = op.to_le_bytes();

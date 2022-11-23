@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 
+use anyhow::Result;
 use eframe::CreationContext;
 use egui::vec2;
 use egui::Button;
@@ -16,7 +17,6 @@ use egui::TextureHandle;
 use egui::Ui;
 use itertools::Itertools;
 
-use crate::nes::cpu::ExecResult;
 use crate::nes::cpu::Operation;
 use crate::nes::ppu::SYSTEM_PALETTE;
 use crate::nes::System;
@@ -55,7 +55,7 @@ impl Debugger {
         }
     }
 
-    fn run_command(&mut self, emulator: &mut System, command: DebugCommand) -> ExecResult<()> {
+    fn run_command(&mut self, emulator: &mut System, command: DebugCommand) -> Result<()> {
         match command {
             DebugCommand::Run => {
                 if emulator.ppu().frame % 60 == 0 {
@@ -65,51 +65,39 @@ impl Debugger {
             }
             DebugCommand::StepFrames(n) => {
                 emulator.execute_one_frame()?;
-                if n > 1 {
-                    self.command = Some(DebugCommand::StepFrames(n - 1));
+                self.command = if n > 1 {
+                    Some(DebugCommand::StepFrames(n - 1))
                 } else {
-                    self.command = None
-                }
+                    None
+                };
             }
             DebugCommand::StepScanlines(n) => {
                 let current_scanline = emulator.ppu().scanline;
-                while current_scanline == emulator.ppu().scanline {
-                    emulator.cpu.execute_one()?;
-                }
-                if n > 1 {
-                    self.command = Some(DebugCommand::StepScanlines(n - 1));
+                emulator.execute_until(|cpu| cpu.bus.ppu.scanline > current_scanline)?;
+                self.command = if n > 1 {
+                    Some(DebugCommand::StepScanlines(n - 1))
                 } else {
-                    self.command = None
-                }
+                    None
+                };
             }
             DebugCommand::StepInstructions(n) => {
-                emulator.cpu.execute_one()?;
-                if n > 1 {
-                    self.command = Some(DebugCommand::StepInstructions(n - 1));
+                emulator.execute_until(|_| true)?;
+                self.command = if n > 1 {
+                    Some(DebugCommand::StepInstructions(n - 1))
                 } else {
-                    self.command = None
-                }
+                    None
+                };
             }
             DebugCommand::StepBack => {
                 *emulator = self.previous_states.pop();
                 self.command = None
             }
             DebugCommand::StepSprite0Hit => {
-                while emulator.ppu().status_register.sprite_zero_hit {
-                    emulator.cpu.execute_one()?;
-                }
-                while !emulator.ppu().status_register.sprite_zero_hit {
-                    emulator.cpu.execute_one()?;
-                }
+                emulator.execute_until(|cpu| cpu.bus.ppu.status_register.sprite_zero_hit)?;
                 self.command = None
             }
             DebugCommand::StepVSyncStart => {
-                while emulator.ppu().status_register.vblank_started {
-                    emulator.cpu.execute_one()?;
-                }
-                while !emulator.ppu().status_register.vblank_started {
-                    emulator.cpu.execute_one()?;
-                }
+                emulator.execute_until(|cpu| cpu.bus.ppu.status_register.vblank_started)?;
                 self.command = None
             }
         }

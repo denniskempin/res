@@ -4,6 +4,7 @@ mod operations;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use anyhow::anyhow;
 use anyhow::Result;
 use bincode::Decode;
 use bincode::Encode;
@@ -13,69 +14,40 @@ use packed_struct::prelude::*;
 use self::cpu_debug::CpuDebug;
 use super::apu::Apu;
 use super::cartridge::Cartridge;
-use super::cartridge::CartridgeError;
+use super::debugger::Debugger;
+use super::debugger::MemoryAccess;
 use super::joypad::Joypad;
 use super::ppu::Ppu;
-use super::ppu::PpuError;
-
-#[derive(Debug)]
-pub enum ExecError {
-    InvalidCpuBusRead(u16),
-    InvalidCpuBusWrite(u16),
-    InvalidCpuBusPeek(u16),
-    IllegalOpcode,
-    InvalidStackPop,
-    InvalidStackPush,
-    PpuError(PpuError),
-    CartridgeError(CartridgeError),
-}
-
-impl From<PpuError> for ExecError {
-    fn from(e: PpuError) -> Self {
-        ExecError::PpuError(e)
-    }
-}
-
-impl From<CartridgeError> for ExecError {
-    fn from(e: CartridgeError) -> Self {
-        ExecError::CartridgeError(e)
-    }
-}
-
-pub type ExecResult<T> = std::result::Result<T, ExecError>;
 
 ////////////////////////////////////////////////////////////////////////////////
 // CpuBus
 
-#[derive(Encode, Decode, Clone)]
+#[derive(Default, Encode, Decode, Clone)]
 pub struct CpuBus {
-    pub ram: [u8; 0x2000],
+    pub ram: Vec<u8>,
     pub cartridge: Rc<RefCell<Cartridge>>,
     pub apu: Apu,
     pub ppu: Ppu,
     pub joypad0: Joypad,
     pub joypad1: Joypad,
-}
-
-impl Default for CpuBus {
-    fn default() -> Self {
-        let cartridge = Rc::new(RefCell::new(Cartridge::default()));
-        Self {
-            ram: [0; 0x2000],
-            cartridge: cartridge.clone(),
-            apu: Default::default(),
-            ppu: Ppu::new(cartridge),
-            joypad0: Joypad::default(),
-            joypad1: Joypad::default(),
-        }
-    }
+    pub debugger: Rc<RefCell<Debugger>>,
 }
 
 impl CpuBus {
-    pub fn advance_clock(&mut self, cpu_cycles: usize) -> ExecResult<()> {
-        self.ppu
-            .advance_clock(cpu_cycles * 3)
-            .map_err(ExecError::PpuError)
+    pub fn new(debugger: Rc<RefCell<Debugger>>) -> Self {
+        let cartridge = Rc::new(RefCell::new(Cartridge::default()));
+        Self {
+            ram: vec![0; 0x2000],
+            debugger,
+            ppu: Ppu::new(cartridge.clone()),
+            cartridge,
+            ..Default::default()
+        }
+    }
+
+    pub fn advance_clock(&mut self, cpu_cycles: usize) -> Result<()> {
+        self.ppu.advance_clock(cpu_cycles * 3)?;
+        Ok(())
     }
 
     pub fn poll_nmi_interrupt(&mut self) -> bool {
@@ -84,7 +56,10 @@ impl CpuBus {
 
     /// Read a single byte from the bus. Note that reads require a mutable bus
     /// as they may have side-effects.
-    pub fn read(&mut self, addr: u16) -> Result<u8, ExecError> {
+    pub fn read(&mut self, addr: u16) -> Result<u8> {
+        self.debugger
+            .borrow_mut()
+            .on_cpu_memory_access(MemoryAccess::Read(addr));
         match addr {
             0x0000..=0x1FFF => Ok(self.ram[addr as usize & 0b0000_0111_1111_1111]),
             0x2000..=0x3FFF => Ok(self.ppu.cpu_bus_read(addr)?),
@@ -92,20 +67,25 @@ impl CpuBus {
             0x4016 => Ok(self.joypad0.cpu_bus_read()),
             0x4017 => Ok(self.joypad1.cpu_bus_read()),
             0x4020..=0xFFFF => Ok(self.cartridge.borrow_mut().cpu_bus_read(addr)?),
-            _ => Err(ExecError::InvalidCpuBusRead(addr)),
+            _ => {
+                self.debugger
+                    .borrow_mut()
+                    .on_cpu_memory_error(MemoryAccess::Read(addr));
+                Ok(0)
+            }
         }
     }
 
     /// Reads a little endian u16 word from the bus.
-    pub fn read_u16(&mut self, addr: u16) -> Result<u16, ExecError> {
+    pub fn read_u16(&mut self, addr: u16) -> Result<u16> {
         Ok(u16::from_le_bytes([self.read(addr)?, self.read(addr + 1)?]))
     }
 
-    pub fn zero_page_read(&mut self, addr: u8) -> Result<u8, ExecError> {
+    pub fn zero_page_read(&mut self, addr: u8) -> Result<u8> {
         self.read(addr as u16)
     }
 
-    pub fn zero_page_read_u16(&mut self, addr: u8) -> Result<u16, ExecError> {
+    pub fn zero_page_read_u16(&mut self, addr: u8) -> Result<u16> {
         Ok(u16::from_le_bytes([
             self.zero_page_read(addr)?,
             self.zero_page_read(addr.wrapping_add(1))?,
@@ -113,7 +93,10 @@ impl CpuBus {
     }
 
     /// Write a single byte to the bus.
-    pub fn write(&mut self, addr: u16, value: u8) -> Result<(), ExecError> {
+    pub fn write(&mut self, addr: u16, value: u8) -> Result<()> {
+        self.debugger
+            .borrow_mut()
+            .on_cpu_memory_access(MemoryAccess::Write(addr, value));
         match addr {
             0x0000..=0x1FFF => self.ram[addr as usize & 0b0000_0111_1111_1111] = value,
             0x2000..=0x3FFF => self.ppu.cpu_bus_write(addr, value)?,
@@ -123,7 +106,10 @@ impl CpuBus {
             0x4016 => self.joypad0.cpu_bus_write(value),
             0x4017 => self.joypad1.cpu_bus_write(value),
             0x4020..=0xFFFF => self.cartridge.borrow_mut().cpu_bus_write(addr, value)?,
-            _ => return Err(ExecError::InvalidCpuBusWrite(addr)),
+            _ => self
+                .debugger
+                .borrow_mut()
+                .on_cpu_memory_error(MemoryAccess::Write(addr, value)),
         };
         Ok(())
     }
@@ -167,7 +153,7 @@ impl CpuBus {
         ]))
     }
 
-    pub fn oam_dma(&mut self, memory_page: u8) -> Result<(), ExecError> {
+    pub fn oam_dma(&mut self, memory_page: u8) -> Result<()> {
         let start_addr = (memory_page as u16) << 8;
         for i in 0x00..=0xFF_u8 {
             let value = self.read(start_addr + i as u16)?;
@@ -232,7 +218,7 @@ enum InterruptVector {
 ////////////////////////////////////////////////////////////////////////////////
 // Cpu
 
-#[derive(Encode, Decode, Clone)]
+#[derive(Encode, Decode, Clone, Default)]
 pub struct Cpu {
     pub a: u8,
     pub x: u8,
@@ -246,41 +232,29 @@ pub struct Cpu {
     pub bus: CpuBus,
 
     pub debug: CpuDebug,
-}
-
-impl Default for Cpu {
-    fn default() -> Self {
-        Self {
-            a: 0,
-            x: 0,
-            y: 0,
-            status_flags: StatusFlags::from_bits(0x24),
-            program_counter: 0,
-            halt: false,
-            sp: 0xFD,
-            cycle: 0,
-            bus: Default::default(),
-            debug: Default::default(),
-        }
-    }
+    pub debugger: Rc<RefCell<Debugger>>,
 }
 
 impl Cpu {
     const STACK_ADDR: u16 = 0x0100;
 
-    pub fn new(bus: CpuBus) -> Self {
+    pub fn new() -> Self {
+        let debugger = Rc::new(RefCell::new(Debugger::default()));
         Self {
-            bus,
+            bus: CpuBus::new(debugger.clone()),
+            status_flags: StatusFlags::from_bits(0x24),
+            sp: 0xFD,
+            debugger,
             ..Default::default()
         }
     }
 
-    pub fn boot(&mut self) -> ExecResult<()> {
+    pub fn boot(&mut self) -> Result<()> {
         self.cycle += 7;
         self.bus.advance_clock(7)
     }
 
-    pub fn execute_one(&mut self) -> ExecResult<bool> {
+    pub fn execute_one(&mut self) -> Result<bool> {
         let operation = self.next_operation()?;
         operation.execute(self)?;
         if self.bus.poll_nmi_interrupt() {
@@ -293,12 +267,12 @@ impl Cpu {
         Ok(!self.halt)
     }
 
-    pub fn advance_clock(&mut self, cycles: usize) -> ExecResult<()> {
+    pub fn advance_clock(&mut self, cycles: usize) -> Result<()> {
         self.cycle += cycles;
         self.bus.advance_clock(cycles)
     }
 
-    pub fn next_operation(&mut self) -> ExecResult<Operation> {
+    pub fn next_operation(&mut self) -> Result<Operation> {
         let operation = Operation::load(self, self.program_counter)?;
         self.debug.before_op(&operation);
         self.program_counter += operation.size() as u16;
@@ -314,29 +288,29 @@ impl Cpu {
         })
     }
 
-    fn stack_push_u16(&mut self, value: u16) -> ExecResult<()> {
+    fn stack_push_u16(&mut self, value: u16) -> Result<()> {
         let bytes = value.to_le_bytes();
         self.stack_push(bytes[1])?;
         self.stack_push(bytes[0])?;
         Ok(())
     }
 
-    fn stack_pop_u16(&mut self) -> ExecResult<u16> {
+    fn stack_pop_u16(&mut self) -> Result<u16> {
         Ok(u16::from_le_bytes([self.stack_pop()?, self.stack_pop()?]))
     }
 
-    fn stack_push(&mut self, value: u8) -> ExecResult<()> {
+    fn stack_push(&mut self, value: u8) -> Result<()> {
         self.write(Self::STACK_ADDR + self.sp as u16, value)?;
         if self.sp == 0 {
-            return Err(ExecError::InvalidStackPush);
+            return Err(anyhow!("Stack overflow"));
         }
         self.sp -= 1;
         Ok(())
     }
 
-    fn stack_pop(&mut self) -> ExecResult<u8> {
+    fn stack_pop(&mut self) -> Result<u8> {
         if self.sp == 0xFF {
-            return Err(ExecError::InvalidStackPop);
+            return Err(anyhow!("Popping from empty stack."));
         }
         self.sp += 1;
         self.read(Self::STACK_ADDR + self.sp as u16)
@@ -349,17 +323,17 @@ impl Cpu {
             .map(|s| s.unwrap_or(0x00))
     }
 
-    pub fn read(&mut self, addr: u16) -> ExecResult<u8> {
+    pub fn read(&mut self, addr: u16) -> Result<u8> {
         self.advance_clock(1)?;
         self.bus.read(addr)
     }
 
-    pub fn write(&mut self, addr: u16, value: u8) -> ExecResult<()> {
+    pub fn write(&mut self, addr: u16, value: u8) -> Result<()> {
         self.advance_clock(1)?;
         self.bus.write(addr, value)
     }
 
-    pub fn read_u16(&mut self, addr: u16) -> ExecResult<u16> {
+    pub fn read_u16(&mut self, addr: u16) -> Result<u16> {
         Ok(u16::from_le_bytes([self.read(addr)?, self.read(addr + 1)?]))
     }
 
@@ -394,9 +368,9 @@ type ImmutableCpuWrapper<'a> = MaybeMutableCpuWrapper<&'a Cpu>;
 /// (e.g. to display calculated addresses without modifying the CPU state).
 trait MaybeMutableCpu {
     fn immutable(&self) -> &Cpu;
-    fn advance_clock(&mut self, cycles: usize) -> ExecResult<()>;
-    fn read_or_peek(&mut self, addr: u16) -> ExecResult<u8>;
-    fn read_or_peek_u16(&mut self, addr: u16) -> ExecResult<u16>;
+    fn advance_clock(&mut self, cycles: usize) -> Result<()>;
+    fn read_or_peek(&mut self, addr: u16) -> Result<u8>;
+    fn read_or_peek_u16(&mut self, addr: u16) -> Result<u16>;
 }
 
 impl<'a> MaybeMutableCpu for MutableCpuWrapper<'a> {
@@ -404,16 +378,16 @@ impl<'a> MaybeMutableCpu for MutableCpuWrapper<'a> {
         self.cpu
     }
 
-    fn advance_clock(&mut self, cycles: usize) -> ExecResult<()> {
+    fn advance_clock(&mut self, cycles: usize) -> Result<()> {
         self.cpu.advance_clock(cycles)?;
         Ok(())
     }
 
-    fn read_or_peek(&mut self, addr: u16) -> ExecResult<u8> {
+    fn read_or_peek(&mut self, addr: u16) -> Result<u8> {
         self.cpu.read(addr)
     }
 
-    fn read_or_peek_u16(&mut self, addr: u16) -> ExecResult<u16> {
+    fn read_or_peek_u16(&mut self, addr: u16) -> Result<u16> {
         self.cpu.read_u16(addr)
     }
 }
@@ -423,21 +397,15 @@ impl<'a> MaybeMutableCpu for ImmutableCpuWrapper<'a> {
         self.cpu
     }
 
-    fn advance_clock(&mut self, _cycles: usize) -> ExecResult<()> {
+    fn advance_clock(&mut self, _cycles: usize) -> Result<()> {
         Ok(())
     }
 
-    fn read_or_peek(&mut self, addr: u16) -> ExecResult<u8> {
-        self.cpu
-            .bus
-            .peek(addr)
-            .ok_or(ExecError::InvalidCpuBusPeek(addr))
+    fn read_or_peek(&mut self, addr: u16) -> Result<u8> {
+        Ok(self.cpu.bus.peek(addr).unwrap_or_default())
     }
 
-    fn read_or_peek_u16(&mut self, addr: u16) -> ExecResult<u16> {
-        self.cpu
-            .bus
-            .peek_u16(addr)
-            .ok_or(ExecError::InvalidCpuBusPeek(addr))
+    fn read_or_peek_u16(&mut self, addr: u16) -> Result<u16> {
+        Ok(self.cpu.bus.peek_u16(addr).unwrap_or_default())
     }
 }
