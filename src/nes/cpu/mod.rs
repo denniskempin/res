@@ -1,4 +1,3 @@
-mod cpu_debug;
 mod operations;
 
 use std::cell::RefCell;
@@ -11,7 +10,6 @@ use bincode::Encode;
 pub use operations::Operation;
 use packed_struct::prelude::*;
 
-use self::cpu_debug::CpuDebug;
 use super::apu::Apu;
 use super::cartridge::Cartridge;
 use super::debugger::Debugger;
@@ -231,7 +229,6 @@ pub struct Cpu {
 
     pub bus: CpuBus,
 
-    pub debug: CpuDebug,
     pub debugger: Rc<RefCell<Debugger>>,
 }
 
@@ -274,7 +271,7 @@ impl Cpu {
 
     pub fn next_operation(&mut self) -> Result<Operation> {
         let operation = Operation::load(self, self.program_counter)?;
-        self.debug.before_op(&operation);
+        self.debugger.borrow_mut().on_instruction(&operation);
         self.program_counter += operation.size() as u16;
         Ok(operation)
     }

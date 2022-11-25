@@ -4,6 +4,9 @@ use std::ops::Range;
 use bincode::Decode;
 use bincode::Encode;
 
+use super::cpu::Operation;
+use crate::util::RingBuffer;
+
 pub enum MemoryAccess {
     Read(u16),
     Write(u16, u8),
@@ -54,6 +57,7 @@ impl Display for BreakReason {
 pub struct Debugger {
     pub breakpoints: Vec<Trigger>,
     pub break_reason: Option<BreakReason>,
+    pub last_ops: RingBuffer<u16, 1024>,
 }
 
 impl Debugger {
@@ -69,6 +73,10 @@ impl Debugger {
         self.break_reason
             .map(|reason| format!("{:}", reason))
             .unwrap_or_default()
+    }
+
+    pub fn on_instruction(&mut self, op: &Operation) {
+        self.last_ops.push(op.addr);
     }
 
     pub fn on_cpu_memory_access(&mut self, access: MemoryAccess) {

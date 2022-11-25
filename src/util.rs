@@ -17,8 +17,8 @@ impl<T, const N: usize> RingBuffer<T, N> {
         self.stack.pop_front().unwrap()
     }
 
-    pub fn push(&mut self, system: T) {
-        self.stack.push_front(system);
+    pub fn push(&mut self, data: T) {
+        self.stack.push_front(data);
         self.stack.truncate(N);
     }
 
