@@ -91,6 +91,7 @@ impl ResCpuBus {
         (addr..(addr + length)).map(|addr| self.peek(addr))
     }
 }
+
 impl CpuBus for ResCpuBus {
     fn advance_clock(&mut self, cpu_cycles: usize) -> Result<()> {
         self.ppu.advance_clock(cpu_cycles * 3)?;
