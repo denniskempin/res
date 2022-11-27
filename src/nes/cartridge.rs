@@ -74,19 +74,21 @@ enum MapperEnum {
     NromMapper(NromMapper),
 }
 
-impl Default for MapperEnum {
-    fn default() -> Self {
-        MapperEnum::NromMapper(NromMapper::default())
-    }
-}
-
-#[derive(Default, Encode, Decode, Clone)]
+#[derive(Encode, Decode, Clone)]
 pub struct Cartridge {
     mapper: MapperEnum,
     pub mirroring_mode: MirroringMode,
 }
 
 impl Cartridge {
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        Self {
+            mapper: MapperEnum::NromMapper(NromMapper::default()),
+            mirroring_mode: MirroringMode::Horizontal,
+        }
+    }
+
     pub fn load_data(&mut self, prg: &[u8], chr: &[u8]) {
         self.mapper = MapperEnum::NromMapper(NromMapper::new(prg, chr));
     }

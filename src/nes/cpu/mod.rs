@@ -63,7 +63,7 @@ pub trait CpuBus {
     }
 }
 
-#[derive(Default, Encode, Decode, Clone)]
+#[derive(Encode, Decode, Clone)]
 pub struct ResCpuBus {
     pub ram: Vec<u8>,
     pub cartridge: Rc<RefCell<Cartridge>>,
@@ -76,13 +76,15 @@ pub struct ResCpuBus {
 
 impl ResCpuBus {
     pub fn new(debugger: Rc<RefCell<Debugger>>) -> Self {
-        let cartridge = Rc::new(RefCell::new(Cartridge::default()));
+        let cartridge = Rc::new(RefCell::new(Cartridge::new()));
         Self {
             ram: vec![0; 0x2000],
+            apu: Apu::default(),
             debugger,
             ppu: Ppu::new(cartridge.clone()),
             cartridge,
-            ..Default::default()
+            joypad0: Joypad::default(),
+            joypad1: Joypad::default(),
         }
     }
 
@@ -224,7 +226,7 @@ enum InterruptVector {
 ////////////////////////////////////////////////////////////////////////////////
 // Cpu
 
-#[derive(Encode, Decode, Clone, Default)]
+#[derive(Encode, Decode, Clone)]
 pub struct Cpu {
     pub a: u8,
     pub x: u8,
@@ -243,6 +245,7 @@ pub struct Cpu {
 impl Cpu {
     const STACK_ADDR: u16 = 0x0100;
 
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         let debugger = Rc::new(RefCell::new(Debugger::default()));
         Self {
@@ -250,7 +253,12 @@ impl Cpu {
             status_flags: StatusFlags::from_bits(0x24),
             sp: 0xFD,
             debugger,
-            ..Default::default()
+            a: 0,
+            x: 0,
+            y: 0,
+            program_counter: 0,
+            halt: false,
+            cycle: 0,
         }
     }
 
@@ -355,7 +363,6 @@ impl Cpu {
     }
 }
 
-/// Wrapper for abstraction over mutability. See ReadOrPeek.
 struct MaybeMutableCpuWrapper<T> {
     cpu: T,
 }

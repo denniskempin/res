@@ -263,7 +263,7 @@ impl Debugger {
     fn operations_panel(&mut self, ui: &mut Ui, emulator: &System) {
         ui.label(RichText::new("Operations").strong());
         let debugger = emulator.cpu().debugger.borrow();
-        let last_ops = debugger.last_ops.iter().take(20).rev();
+        let last_ops = debugger.last_ops.iter().rev();
         for addr in last_ops {
             self.operation_label(ui, *addr, emulator, false);
         }

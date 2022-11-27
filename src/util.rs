@@ -4,9 +4,9 @@ use std::collections::VecDeque;
 use bincode::Decode;
 use bincode::Encode;
 
-#[derive(Default, Encode, Decode, Clone)]
+#[derive(Encode, Decode, Clone)]
 pub struct RingBuffer<T, const N: usize> {
-    stack: VecDeque<T>,
+    pub stack: VecDeque<T>,
 }
 
 impl<T, const N: usize> RingBuffer<T, N> {
@@ -24,5 +24,13 @@ impl<T, const N: usize> RingBuffer<T, N> {
 
     pub fn iter(&self) -> Iter<'_, T> {
         self.stack.iter()
+    }
+}
+
+impl<T, const N: usize> Default for RingBuffer<T, N> {
+    fn default() -> Self {
+        Self {
+            stack: Default::default(),
+        }
     }
 }

@@ -78,12 +78,6 @@ pub struct Ppu {
     pub framebuffer: Framebuffer,
 }
 
-impl Default for Ppu {
-    fn default() -> Self {
-        Self::new(Rc::new(RefCell::new(Cartridge::default())))
-    }
-}
-
 impl Ppu {
     pub fn new(cartridge: Rc<RefCell<Cartridge>>) -> Self {
         Self {
@@ -975,9 +969,13 @@ pub static SYSTEM_PALETTE: [Color32; 64] = [
 mod tests {
     use super::*;
 
+    fn create_test_ppu() -> Ppu {
+        Ppu::new(Rc::new(RefCell::new(Cartridge::new())))
+    }
+
     #[test]
     pub fn test_data_register() {
-        let mut ppu = Ppu::default();
+        let mut ppu = create_test_ppu();
         let mut chr = vec![0; 0x2000];
         chr[0x1000] = 0x12;
         chr[0x1001] = 0x34;
@@ -995,7 +993,7 @@ mod tests {
 
     #[test]
     pub fn test_addr_register_clipping() {
-        let mut ppu = Ppu::default();
+        let mut ppu = create_test_ppu();
         ppu.cpu_bus_write(ADDRESS_REGISTER_ADDR, 0xFF).unwrap();
         ppu.cpu_bus_write(ADDRESS_REGISTER_ADDR, 0xFF).unwrap();
         println!("{:016b}", ppu.v_register.value);
@@ -1006,7 +1004,7 @@ mod tests {
     #[test]
     pub fn test_v_and_t_register() {
         // Following the example in https://www.nesdev.org/wiki/PPU_scrolling#Summary
-        let mut ppu = Ppu::default();
+        let mut ppu = create_test_ppu();
 
         // Verify setting nametable via control register.
         ppu.cpu_bus_write(0x2000, 0b0000_0011).unwrap();

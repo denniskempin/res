@@ -33,7 +33,7 @@ pub struct Record {
     pub entries: Vec<RecordEntry>,
 }
 
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct System {
     pub cpu: Cpu,
     pub record_to: Option<Record>,
@@ -41,6 +41,7 @@ pub struct System {
 }
 
 impl System {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             cpu: Cpu::new(),
