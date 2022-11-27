@@ -3,6 +3,7 @@ use std::io::BufRead;
 use std::io::{self};
 use std::path::Path;
 
+use res::nes::cpu::CpuBus;
 use res::nes::trace::Trace;
 use res::nes::System;
 

@@ -20,8 +20,51 @@ use super::ppu::Ppu;
 ////////////////////////////////////////////////////////////////////////////////
 // CpuBus
 
+pub trait CpuBus {
+    fn advance_clock(&mut self, cpu_cycles: usize) -> Result<()>;
+    fn poll_nmi_interrupt(&mut self) -> bool;
+    fn peek(&self, addr: u16) -> Option<u8>;
+    fn read(&mut self, addr: u16) -> Result<u8>;
+    fn write(&mut self, addr: u16, value: u8) -> Result<()>;
+    fn oam_dma(&mut self, memory_page: u8) -> Result<()>;
+
+    /// Peeks at a little endian u16 word from the bus.
+    fn peek_u16(&self, addr: u16) -> Option<u16> {
+        Some(u16::from_le_bytes([
+            self.peek(addr)?,
+            self.peek(addr.wrapping_add(1))?,
+        ]))
+    }
+
+    fn zero_page_peek(&self, addr: u8) -> Option<u8> {
+        self.peek(addr as u16)
+    }
+
+    fn zero_page_peek_u16(&self, addr: u8) -> Option<u16> {
+        Some(u16::from_le_bytes([
+            self.zero_page_peek(addr)?,
+            self.zero_page_peek(addr.wrapping_add(1))?,
+        ]))
+    }
+
+    fn read_u16(&mut self, addr: u16) -> Result<u16> {
+        Ok(u16::from_le_bytes([self.read(addr)?, self.read(addr + 1)?]))
+    }
+
+    fn zero_page_read(&mut self, addr: u8) -> Result<u8> {
+        self.read(addr as u16)
+    }
+
+    fn zero_page_read_u16(&mut self, addr: u8) -> Result<u16> {
+        Ok(u16::from_le_bytes([
+            self.zero_page_read(addr)?,
+            self.zero_page_read(addr.wrapping_add(1))?,
+        ]))
+    }
+}
+
 #[derive(Default, Encode, Decode, Clone)]
-pub struct CpuBus {
+pub struct ResCpuBus {
     pub ram: Vec<u8>,
     pub cartridge: Rc<RefCell<Cartridge>>,
     pub apu: Apu,
@@ -31,7 +74,7 @@ pub struct CpuBus {
     pub debugger: Rc<RefCell<Debugger>>,
 }
 
-impl CpuBus {
+impl ResCpuBus {
     pub fn new(debugger: Rc<RefCell<Debugger>>) -> Self {
         let cartridge = Rc::new(RefCell::new(Cartridge::default()));
         Self {
@@ -43,18 +86,38 @@ impl CpuBus {
         }
     }
 
-    pub fn advance_clock(&mut self, cpu_cycles: usize) -> Result<()> {
+    /// Peeks at a range of bytes from the bus
+    pub fn peek_slice(&self, addr: u16, length: u16) -> impl Iterator<Item = Option<u8>> + '_ {
+        (addr..(addr + length)).map(|addr| self.peek(addr))
+    }
+}
+impl CpuBus for ResCpuBus {
+    fn advance_clock(&mut self, cpu_cycles: usize) -> Result<()> {
         self.ppu.advance_clock(cpu_cycles * 3)?;
         Ok(())
     }
 
-    pub fn poll_nmi_interrupt(&mut self) -> bool {
+    fn poll_nmi_interrupt(&mut self) -> bool {
         self.ppu.poll_nmi_interrupt()
     }
 
+    /// Allows immutable reads from the bus for display/debug purposes.
+    fn peek(&self, addr: u16) -> Option<u8> {
+        match addr {
+            0x0000..=0x1FFF => Some(self.ram[addr as usize & 0b0000_0111_1111_1111]),
+            0x2000..=0x3FFF => Some(self.ppu.cpu_bus_peek(addr)?),
+            0x4000..=0x4013 => Some(self.apu.cpu_bus_peek(addr)),
+            0x4014 => Some(0),
+            0x4015 => Some(self.apu.cpu_bus_peek(0x4015)),
+            0x4016 => Some(self.joypad0.cpu_bus_peek()),
+            0x4017 => Some(self.joypad1.cpu_bus_peek()),
+            0x4020..=0xFFFF => self.cartridge.borrow().cpu_bus_peek(addr),
+            _ => None,
+        }
+    }
     /// Read a single byte from the bus. Note that reads require a mutable bus
     /// as they may have side-effects.
-    pub fn read(&mut self, addr: u16) -> Result<u8> {
+    fn read(&mut self, addr: u16) -> Result<u8> {
         self.debugger
             .borrow_mut()
             .on_cpu_memory_access(MemoryAccess::Read(addr));
@@ -74,24 +137,7 @@ impl CpuBus {
         }
     }
 
-    /// Reads a little endian u16 word from the bus.
-    pub fn read_u16(&mut self, addr: u16) -> Result<u16> {
-        Ok(u16::from_le_bytes([self.read(addr)?, self.read(addr + 1)?]))
-    }
-
-    pub fn zero_page_read(&mut self, addr: u8) -> Result<u8> {
-        self.read(addr as u16)
-    }
-
-    pub fn zero_page_read_u16(&mut self, addr: u8) -> Result<u16> {
-        Ok(u16::from_le_bytes([
-            self.zero_page_read(addr)?,
-            self.zero_page_read(addr.wrapping_add(1))?,
-        ]))
-    }
-
-    /// Write a single byte to the bus.
-    pub fn write(&mut self, addr: u16, value: u8) -> Result<()> {
+    fn write(&mut self, addr: u16, value: u8) -> Result<()> {
         self.debugger
             .borrow_mut()
             .on_cpu_memory_access(MemoryAccess::Write(addr, value));
@@ -112,46 +158,7 @@ impl CpuBus {
         Ok(())
     }
 
-    /// Allows immutable reads from the bus for display/debug purposes.
-    pub fn peek(&self, addr: u16) -> Option<u8> {
-        match addr {
-            0x0000..=0x1FFF => Some(self.ram[addr as usize & 0b0000_0111_1111_1111]),
-            0x2000..=0x3FFF => Some(self.ppu.cpu_bus_peek(addr)?),
-            0x4000..=0x4013 => Some(self.apu.cpu_bus_peek(addr)),
-            0x4014 => Some(0),
-            0x4015 => Some(self.apu.cpu_bus_peek(0x4015)),
-            0x4016 => Some(self.joypad0.cpu_bus_peek()),
-            0x4017 => Some(self.joypad1.cpu_bus_peek()),
-            0x4020..=0xFFFF => self.cartridge.borrow().cpu_bus_peek(addr),
-            _ => None,
-        }
-    }
-
-    /// Peeks at a range of bytes from the bus
-    pub fn peek_slice(&self, addr: u16, length: u16) -> impl Iterator<Item = Option<u8>> + '_ {
-        (addr..(addr + length)).map(|addr| self.peek(addr))
-    }
-
-    /// Peeks at a little endian u16 word from the bus.
-    pub fn peek_u16(&self, addr: u16) -> Option<u16> {
-        Some(u16::from_le_bytes([
-            self.peek(addr)?,
-            self.peek(addr.wrapping_add(1))?,
-        ]))
-    }
-
-    pub fn zero_page_peek(&self, addr: u8) -> Option<u8> {
-        self.peek(addr as u16)
-    }
-
-    pub fn zero_page_peek_u16(&self, addr: u8) -> Option<u16> {
-        Some(u16::from_le_bytes([
-            self.zero_page_peek(addr)?,
-            self.zero_page_peek(addr.wrapping_add(1))?,
-        ]))
-    }
-
-    pub fn oam_dma(&mut self, memory_page: u8) -> Result<()> {
+    fn oam_dma(&mut self, memory_page: u8) -> Result<()> {
         let start_addr = (memory_page as u16) << 8;
         for i in 0x00..=0xFF_u8 {
             let value = self.read(start_addr + i as u16)?;
@@ -227,7 +234,7 @@ pub struct Cpu {
     pub sp: u8,
     pub cycle: usize,
 
-    pub bus: CpuBus,
+    pub bus: ResCpuBus,
 
     pub debugger: Rc<RefCell<Debugger>>,
 }
@@ -238,7 +245,7 @@ impl Cpu {
     pub fn new() -> Self {
         let debugger = Rc::new(RefCell::new(Debugger::default()));
         Self {
-            bus: CpuBus::new(debugger.clone()),
+            bus: ResCpuBus::new(debugger.clone()),
             status_flags: StatusFlags::from_bits(0x24),
             sp: 0xFD,
             debugger,

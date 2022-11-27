@@ -2,6 +2,7 @@ use anyhow::anyhow;
 use anyhow::Result;
 
 use super::Cpu;
+use super::CpuBus;
 use super::MaybeMutableCpu;
 use super::StatusFlags;
 

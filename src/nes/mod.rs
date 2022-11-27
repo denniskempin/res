@@ -17,6 +17,7 @@ use serde::Serialize;
 
 use self::cartridge::Cartridge;
 use self::cpu::Cpu;
+use self::cpu::CpuBus;
 use self::cpu::Operation;
 use self::ppu::Ppu;
 use self::trace::Trace;
