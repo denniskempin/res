@@ -3,7 +3,6 @@ use anyhow::Result;
 
 use super::Cpu;
 use super::CpuBus;
-use super::MaybeMutableCpu;
 use super::StatusFlags;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -57,11 +56,11 @@ macro_rules! opcode {
             code: $code,
             operand_size: $address_mode::OPERAND_SIZE,
             execute_fn: |cpu, addr| {
-                let address_mode = $address_mode::load(cpu.mutable_wrapper(), addr)?;
+                let address_mode = $address_mode::load(cpu, addr)?;
                 $method::<$address_mode>(cpu, address_mode)
             },
             format_fn: |cpu, addr| {
-                if let Ok(address_mode) = $address_mode::load(cpu.immutable_wrapper(), addr) {
+                if let Ok(address_mode) = $address_mode::load(cpu, addr) {
                     format!(
                         "{}{}",
                         stringify!($method).to_uppercase(),
@@ -416,7 +415,7 @@ impl Default for OpCodeTableEntry {
 trait Operand {
     const OPERAND_SIZE: usize = 0;
 
-    fn load<T: MaybeMutableCpu>(_cpu: T, _addr: u16) -> Result<Self>
+    fn load(_cpu: &Cpu, _addr: u16) -> Result<Self>
     where
         Self: Sized;
 
@@ -426,7 +425,7 @@ trait Operand {
         unimplemented!()
     }
 
-    fn apply_page_cross_penality(&self, cpu: &mut Cpu) -> Result<()> {
+    fn apply_page_cross_penality(&self, _cpu: &mut Cpu) -> Result<()> {
         Ok(())
     }
 
@@ -445,9 +444,9 @@ struct Immediate {
 impl Operand for Immediate {
     const OPERAND_SIZE: usize = 1;
 
-    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> Result<Self> {
+    fn load(cpu: &Cpu, addr: u16) -> Result<Self> {
         Ok(Self {
-            operand: cpu.read_or_peek(addr + 1)?,
+            operand: peek_to_result(cpu.bus.peek(addr + 1))?,
         })
     }
 
@@ -464,7 +463,7 @@ struct Implicit {}
 impl Operand for Implicit {
     const OPERAND_SIZE: usize = 0;
 
-    fn load<T: MaybeMutableCpu>(mut cpu: T, _addr: u16) -> Result<Self> {
+    fn load(_cpu: &Cpu, _addr: u16) -> Result<Self> {
         Ok(Self {})
     }
 
@@ -477,7 +476,7 @@ struct Accumulator {}
 impl Operand for Accumulator {
     const OPERAND_SIZE: usize = 0;
 
-    fn load<T: MaybeMutableCpu>(_cpu: T, _addr: u16) -> Result<Self> {
+    fn load(_cpu: &Cpu, _addr: u16) -> Result<Self> {
         Ok(Self {})
     }
 
@@ -501,9 +500,9 @@ struct Absolute {
 impl Operand for Absolute {
     const OPERAND_SIZE: usize = 2;
 
-    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> Result<Self> {
+    fn load(cpu: &Cpu, addr: u16) -> Result<Self> {
         Ok(Self {
-            operand_addr: cpu.read_or_peek_u16(addr + 1)?,
+            operand_addr: peek_to_result(cpu.bus.peek_u16(addr + 1))?,
         })
     }
 
@@ -525,9 +524,9 @@ struct AbsoluteX {
 impl Operand for AbsoluteX {
     const OPERAND_SIZE: usize = 2;
 
-    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> Result<Self> {
-        let base_addr = cpu.read_or_peek_u16(addr + 1)?;
-        let operand_addr = base_addr.wrapping_add(cpu.immutable().x as u16);
+    fn load(cpu: &Cpu, addr: u16) -> Result<Self> {
+        let base_addr = peek_to_result(cpu.bus.peek_u16(addr + 1))?;
+        let operand_addr = base_addr.wrapping_add(cpu.x as u16);
         let page_cross = base_addr & 0xFF00 != operand_addr & 0xFF00;
         Ok(Self {
             base_addr,
@@ -561,9 +560,9 @@ struct AbsoluteY {
 impl Operand for AbsoluteY {
     const OPERAND_SIZE: usize = 2;
 
-    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> Result<Self> {
-        let base_addr = cpu.read_or_peek_u16(addr + 1)?;
-        let operand_addr = base_addr.wrapping_add(cpu.immutable().y as u16);
+    fn load(cpu: &Cpu, addr: u16) -> Result<Self> {
+        let base_addr = peek_to_result(cpu.bus.peek_u16(addr + 1))?;
+        let operand_addr = base_addr.wrapping_add(cpu.y as u16);
         let page_cross = base_addr & 0xFF00 != operand_addr & 0xFF00;
         Ok(Self {
             base_addr,
@@ -589,15 +588,19 @@ impl Operand for AbsoluteY {
     }
 }
 
+fn peek_to_result<T>(peek: Option<T>) -> Result<T> {
+    peek.ok_or_else(|| anyhow!("Invalid operand address"))
+}
+
 struct ZeroPage {
     operand_addr: u8,
 }
 impl Operand for ZeroPage {
     const OPERAND_SIZE: usize = 1;
 
-    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> Result<Self> {
+    fn load(cpu: &Cpu, addr: u16) -> Result<Self> {
         Ok(Self {
-            operand_addr: cpu.read_or_peek(addr + 1)?,
+            operand_addr: peek_to_result(cpu.bus.peek(addr + 1))?,
         })
     }
 
@@ -609,7 +612,6 @@ impl Operand for ZeroPage {
         return format!(" $00{:02X}", self.operand_addr);
     }
 }
-
 struct ZeroPageX {
     base_addr: u8,
     operand_addr: u16,
@@ -617,10 +619,9 @@ struct ZeroPageX {
 impl Operand for ZeroPageX {
     const OPERAND_SIZE: usize = 1;
 
-    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> Result<Self> {
-        let base_addr = cpu.read_or_peek(addr + 1)?;
-        let operand_addr = base_addr.wrapping_add(cpu.immutable().x) as u16;
-        cpu.read_or_peek(0x00)?; // Fake read for one extra cycle
+    fn load(cpu: &Cpu, addr: u16) -> Result<Self> {
+        let base_addr = peek_to_result(cpu.bus.peek(addr + 1))?;
+        let operand_addr = base_addr.wrapping_add(cpu.x) as u16;
         Ok(Self {
             base_addr,
             operand_addr,
@@ -643,10 +644,10 @@ struct ZeroPageY {
 impl Operand for ZeroPageY {
     const OPERAND_SIZE: usize = 1;
 
-    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> Result<Self> {
-        let base_addr = cpu.read_or_peek(addr + 1)?;
-        let operand_addr = base_addr.wrapping_add(cpu.immutable().y) as u16;
-        cpu.read_or_peek(0x00)?; // Fake read for one extra cycle
+    fn load(cpu: &Cpu, addr: u16) -> Result<Self> {
+        let base_addr = peek_to_result(cpu.bus.peek(addr + 1))?;
+        let operand_addr = base_addr.wrapping_add(cpu.y) as u16;
+        cpu.bus.peek(0x00).unwrap(); // Fake read for one extra cycle
         Ok(Self {
             base_addr,
             operand_addr,
@@ -669,8 +670,8 @@ struct Relative {
 impl Operand for Relative {
     const OPERAND_SIZE: usize = 1;
 
-    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> Result<Self> {
-        let relative_addr = cpu.read_or_peek(addr + 1)? as i8;
+    fn load(cpu: &Cpu, addr: u16) -> Result<Self> {
+        let relative_addr = peek_to_result(cpu.bus.peek(addr + 1))? as i8;
         let base_addr = addr + 1 + Self::OPERAND_SIZE as u16;
         let operand_addr = if relative_addr > 0 {
             base_addr.wrapping_add((relative_addr as i16).unsigned_abs())
@@ -699,16 +700,19 @@ struct Indirect {
 impl Operand for Indirect {
     const OPERAND_SIZE: usize = 2;
 
-    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> Result<Self> {
-        let indirect_addr = cpu.read_or_peek_u16(addr + 1)?;
+    fn load(cpu: &Cpu, addr: u16) -> Result<Self> {
+        let indirect_addr = peek_to_result(cpu.bus.peek_u16(addr + 1))?;
         let bytes = if indirect_addr & 0x00FF == 0x00FF {
             // CPU Bug: Address wraps around inside page.
             let page = indirect_addr & 0xFF00;
-            [cpu.read_or_peek(indirect_addr)?, cpu.read_or_peek(page)?]
+            [
+                peek_to_result(cpu.bus.peek(indirect_addr))?,
+                peek_to_result(cpu.bus.peek(page))?,
+            ]
         } else {
             [
-                cpu.read_or_peek(indirect_addr)?,
-                cpu.read_or_peek(indirect_addr + 1)?,
+                peek_to_result(cpu.bus.peek(indirect_addr))?,
+                peek_to_result(cpu.bus.peek(indirect_addr + 1))?,
             ]
         };
         let operand_addr = u16::from_le_bytes(bytes);
@@ -738,13 +742,13 @@ struct IndirectY {
 impl Operand for IndirectY {
     const OPERAND_SIZE: usize = 1;
 
-    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> Result<Self> {
-        let indirect_addr = cpu.read_or_peek(addr + 1)?;
+    fn load(cpu: &Cpu, addr: u16) -> Result<Self> {
+        let indirect_addr = peek_to_result(cpu.bus.peek(addr + 1))?;
         let base_addr = u16::from_le_bytes([
-            cpu.read_or_peek(indirect_addr as u16)?,
-            cpu.read_or_peek(indirect_addr.wrapping_add(1) as u16)?,
+            cpu.bus.peek(indirect_addr as u16).unwrap(),
+            cpu.bus.peek(indirect_addr.wrapping_add(1) as u16).unwrap(),
         ]);
-        let operand_addr = base_addr.wrapping_add(cpu.immutable().y as u16);
+        let operand_addr = base_addr.wrapping_add(cpu.y as u16);
         let page_cross = base_addr & 0xFF00 != operand_addr & 0xFF00;
 
         Ok(Self {
@@ -781,13 +785,13 @@ struct IndirectX {
 impl Operand for IndirectX {
     const OPERAND_SIZE: usize = 1;
 
-    fn load<T: MaybeMutableCpu>(mut cpu: T, addr: u16) -> Result<Self> {
-        let indirect_addr = cpu.read_or_peek(addr + 1)?.wrapping_add(cpu.immutable().x);
+    fn load(cpu: &Cpu, addr: u16) -> Result<Self> {
+        let indirect_addr = peek_to_result(cpu.bus.peek(addr + 1))?.wrapping_add(cpu.x);
         let operand_addr = u16::from_le_bytes([
-            cpu.read_or_peek(indirect_addr as u16)?,
-            cpu.read_or_peek(indirect_addr.wrapping_add(1) as u16)?,
+            cpu.bus.peek(indirect_addr as u16).unwrap(),
+            cpu.bus.peek(indirect_addr.wrapping_add(1) as u16).unwrap(),
         ]);
-        cpu.read_or_peek(0x00)?; // Fake read for extra cycle.
+        cpu.bus.peek(0x00).unwrap(); // Fake read for extra cycle.
         Ok(Self {
             indirect_addr,
             operand_addr,
