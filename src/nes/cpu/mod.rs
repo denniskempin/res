@@ -337,12 +337,10 @@ impl Cpu {
     }
 
     pub fn read(&mut self, addr: u16) -> Result<u8> {
-        self.advance_clock(1)?;
         self.bus.read(addr)
     }
 
     pub fn write(&mut self, addr: u16, value: u8) -> Result<()> {
-        self.advance_clock(1)?;
         self.bus.write(addr, value)
     }
 
@@ -380,7 +378,6 @@ type ImmutableCpuWrapper<'a> = MaybeMutableCpuWrapper<&'a Cpu>;
 /// (e.g. to display calculated addresses without modifying the CPU state).
 trait MaybeMutableCpu {
     fn immutable(&self) -> &Cpu;
-    fn advance_clock(&mut self, cycles: usize) -> Result<()>;
     fn read_or_peek(&mut self, addr: u16) -> Result<u8>;
     fn read_or_peek_u16(&mut self, addr: u16) -> Result<u16>;
 }
@@ -388,11 +385,6 @@ trait MaybeMutableCpu {
 impl<'a> MaybeMutableCpu for MutableCpuWrapper<'a> {
     fn immutable(&self) -> &Cpu {
         self.cpu
-    }
-
-    fn advance_clock(&mut self, cycles: usize) -> Result<()> {
-        self.cpu.advance_clock(cycles)?;
-        Ok(())
     }
 
     fn read_or_peek(&mut self, addr: u16) -> Result<u8> {
@@ -407,10 +399,6 @@ impl<'a> MaybeMutableCpu for MutableCpuWrapper<'a> {
 impl<'a> MaybeMutableCpu for ImmutableCpuWrapper<'a> {
     fn immutable(&self) -> &Cpu {
         self.cpu
-    }
-
-    fn advance_clock(&mut self, _cycles: usize) -> Result<()> {
-        Ok(())
     }
 
     fn read_or_peek(&mut self, addr: u16) -> Result<u8> {

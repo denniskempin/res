@@ -12,7 +12,7 @@ use super::StatusFlags;
 #[derive(Default, Clone)]
 pub struct Operation {
     pub addr: u16,
-    table_entry: OpCodeTableEntry,
+    pub table_entry: OpCodeTableEntry,
 }
 
 impl Operation {
@@ -33,7 +33,9 @@ impl Operation {
     }
 
     pub fn execute(&self, cpu: &mut Cpu) -> Result<()> {
-        (self.table_entry.execute_fn)(cpu, self.addr)
+        cpu.advance_clock(self.table_entry.cycle_count_before)?;
+        (self.table_entry.execute_fn)(cpu, self.addr)?;
+        cpu.advance_clock(self.table_entry.cycle_count_after)
     }
 
     pub fn format(&self, cpu: &Cpu) -> String {
@@ -45,7 +47,12 @@ impl Operation {
 // OpCode Table
 
 macro_rules! opcode {
-    ($code: literal, $method: ident, $address_mode: ident) => {
+    (
+        $code: literal,
+        $method: ident,
+        $address_mode: ident,
+        $cycle_count: expr
+    ) => {
         OpCodeTableEntry {
             code: $code,
             operand_size: $address_mode::OPERAND_SIZE,
@@ -53,7 +60,6 @@ macro_rules! opcode {
                 let address_mode = $address_mode::load(cpu.mutable_wrapper(), addr)?;
                 $method::<$address_mode>(cpu, address_mode)
             },
-
             format_fn: |cpu, addr| {
                 if let Ok(address_mode) = $address_mode::load(cpu.immutable_wrapper(), addr) {
                     format!(
@@ -65,6 +71,8 @@ macro_rules! opcode {
                     format!("INV")
                 }
             },
+            cycle_count_before: $cycle_count.0,
+            cycle_count_after: $cycle_count.1,
         }
     };
 }
@@ -77,293 +85,293 @@ lazy_static! {
         // Specify opcodes out of order to better organize them.
         const OPCODE_LIST: &[OpCodeTableEntry] = &[
             // Codes ending in 0
-            opcode!(0x00, hlt, Implicit),
-            opcode!(0x10, bpl, Relative),
-            opcode!(0x20, jsr, Absolute),
-            opcode!(0x30, bmi, Relative),
-            opcode!(0x40, rti, Implicit),
-            opcode!(0x50, bvc, Relative),
-            opcode!(0x60, rts, Implicit),
-            opcode!(0x70, bvs, Relative),
-            opcode!(0x80, ill, Immediate),
-            opcode!(0x90, bcc, Relative),
-            opcode!(0xA0, ldy, Immediate),
-            opcode!(0xB0, bcs, Relative),
-            opcode!(0xC0, cpy, Immediate),
-            opcode!(0xD0, bne, Relative),
-            opcode!(0xE0, cpx, Immediate),
-            opcode!(0xF0, beq, Relative),
+            opcode!(0x00, hlt, Implicit, (2, 0)),
+            opcode!(0x10, bpl, Relative, (2, 0)),
+            opcode!(0x20, jsr, Absolute, (6, 0)),
+            opcode!(0x30, bmi, Relative, (2, 0)),
+            opcode!(0x40, rti, Implicit, (6, 0)),
+            opcode!(0x50, bvc, Relative, (2, 0)),
+            opcode!(0x60, rts, Implicit, (6, 0)),
+            opcode!(0x70, bvs, Relative, (2, 0)),
+            opcode!(0x80, ill, Immediate, (1, 0)),
+            opcode!(0x90, bcc, Relative, (2, 0)),
+            opcode!(0xA0, ldy, Immediate, (2, 0)),
+            opcode!(0xB0, bcs, Relative, (2, 0)),
+            opcode!(0xC0, cpy, Immediate, (2, 0)),
+            opcode!(0xD0, bne, Relative, (2, 0)),
+            opcode!(0xE0, cpx, Immediate, (2, 0)),
+            opcode!(0xF0, beq, Relative, (2, 0)),
 
             // Codes ending in 1
-            opcode!(0x01, ora, IndirectX),
-            opcode!(0x11, ora, IndirectY),
-            opcode!(0x21, and, IndirectX),
-            opcode!(0x31, and, IndirectY),
-            opcode!(0x41, eor, IndirectX),
-            opcode!(0x51, eor, IndirectY),
-            opcode!(0x61, adc, IndirectX),
-            opcode!(0x71, adc, IndirectY),
-            opcode!(0x81, sta, IndirectX),
-            opcode!(0x91, sta, IndirectY),
-            opcode!(0xA1, lda, IndirectX),
-            opcode!(0xB1, lda, IndirectY),
-            opcode!(0xC1, cmp, IndirectX),
-            opcode!(0xD1, cmp, IndirectY),
-            opcode!(0xE1, sbc, IndirectX),
-            opcode!(0xF1, sbc, IndirectY),
+            opcode!(0x01, ora, IndirectX, (6, 0)),
+            opcode!(0x11, ora, IndirectY, (5, 0)),
+            opcode!(0x21, and, IndirectX, (6, 0)),
+            opcode!(0x31, and, IndirectY, (5, 0)),
+            opcode!(0x41, eor, IndirectX, (6, 0)),
+            opcode!(0x51, eor, IndirectY, (5, 0)),
+            opcode!(0x61, adc, IndirectX, (6, 0)),
+            opcode!(0x71, adc, IndirectY, (5, 0)),
+            opcode!(0x81, sta, IndirectX, (6, 0)),
+            opcode!(0x91, sta, IndirectY, (6, 0)),
+            opcode!(0xA1, lda, IndirectX, (6, 0)),
+            opcode!(0xB1, lda, IndirectY, (5, 0)),
+            opcode!(0xC1, cmp, IndirectX, (6, 0)),
+            opcode!(0xD1, cmp, IndirectY, (5, 0)),
+            opcode!(0xE1, sbc, IndirectX, (6, 0)),
+            opcode!(0xF1, sbc, IndirectY, (5, 0)),
 
             // Codes ending in 2
-            opcode!(0x02, ill, Implicit),
-            opcode!(0x12, ill, Implicit),
-            opcode!(0x22, ill, Implicit),
-            opcode!(0x32, ill, Implicit),
-            opcode!(0x42, ill, Implicit),
-            opcode!(0x52, ill, Implicit),
-            opcode!(0x62, ill, Implicit),
-            opcode!(0x72, ill, Implicit),
-            opcode!(0x82, ill, Immediate),
-            opcode!(0x92, ill, Implicit),
-            opcode!(0xA2, ldx, Immediate),
-            opcode!(0xB2, ill, Implicit),
-            opcode!(0xC2, ill, Immediate),
-            opcode!(0xD2, ill, Implicit),
-            opcode!(0xE2, ill, Immediate),
-            opcode!(0xF2, ill, Implicit),
+            opcode!(0x02, ill, Implicit, (1, 0)),
+            opcode!(0x12, ill, Implicit, (1, 0)),
+            opcode!(0x22, ill, Implicit, (1, 0)),
+            opcode!(0x32, ill, Implicit, (1, 0)),
+            opcode!(0x42, ill, Implicit, (1, 0)),
+            opcode!(0x52, ill, Implicit, (1, 0)),
+            opcode!(0x62, ill, Implicit, (1, 0)),
+            opcode!(0x72, ill, Implicit, (1, 0)),
+            opcode!(0x82, ill, Immediate, (1, 0)),
+            opcode!(0x92, ill, Implicit, (1, 0)),
+            opcode!(0xA2, ldx, Immediate, (2, 0)),
+            opcode!(0xB2, ill, Implicit, (1, 0)),
+            opcode!(0xC2, ill, Immediate, (1, 0)),
+            opcode!(0xD2, ill, Implicit, (1, 0)),
+            opcode!(0xE2, ill, Immediate, (1, 0)),
+            opcode!(0xF2, ill, Implicit, (1, 0)),
 
             // Codes ending in 3
-            opcode!(0x03, ill, IndirectX),
-            opcode!(0x13, ill, IndirectY),
-            opcode!(0x23, ill, IndirectX),
-            opcode!(0x33, ill, IndirectY),
-            opcode!(0x43, ill, IndirectX),
-            opcode!(0x53, ill, IndirectY),
-            opcode!(0x63, ill, IndirectX),
-            opcode!(0x73, ill, IndirectY),
-            opcode!(0x83, ill, IndirectX),
-            opcode!(0x93, ill, IndirectY),
-            opcode!(0xA3, ill, IndirectX),
-            opcode!(0xB3, ill, IndirectY),
-            opcode!(0xC3, ill, IndirectX),
-            opcode!(0xD3, ill, IndirectY),
-            opcode!(0xE3, ill, IndirectX),
-            opcode!(0xF3, ill, IndirectY),
+            opcode!(0x03, ill, IndirectX, (1, 0)),
+            opcode!(0x13, ill, IndirectY, (1, 0)),
+            opcode!(0x23, ill, IndirectX, (1, 0)),
+            opcode!(0x33, ill, IndirectY, (1, 0)),
+            opcode!(0x43, ill, IndirectX, (1, 0)),
+            opcode!(0x53, ill, IndirectY, (1, 0)),
+            opcode!(0x63, ill, IndirectX, (1, 0)),
+            opcode!(0x73, ill, IndirectY, (1, 0)),
+            opcode!(0x83, ill, IndirectX, (1, 0)),
+            opcode!(0x93, ill, IndirectY, (1, 0)),
+            opcode!(0xA3, ill, IndirectX, (1, 0)),
+            opcode!(0xB3, ill, IndirectY, (1, 0)),
+            opcode!(0xC3, ill, IndirectX, (1, 0)),
+            opcode!(0xD3, ill, IndirectY, (1, 0)),
+            opcode!(0xE3, ill, IndirectX, (1, 0)),
+            opcode!(0xF3, ill, IndirectY, (1, 0)),
 
             // Codes ending in 4
-            opcode!(0x04, ill, ZeroPage),
-            opcode!(0x14, ill, ZeroPageX),
-            opcode!(0x24, bit, ZeroPage),
-            opcode!(0x34, ill, ZeroPageX),
-            opcode!(0x44, ill, ZeroPage),
-            opcode!(0x54, ill, ZeroPageX),
-            opcode!(0x64, ill, ZeroPage),
-            opcode!(0x74, ill, ZeroPageX),
-            opcode!(0x84, sty, ZeroPage),
-            opcode!(0x94, sty, ZeroPageX),
-            opcode!(0xA4, ldy, ZeroPage),
-            opcode!(0xB4, ldy, ZeroPageX),
-            opcode!(0xC4, cpy, ZeroPage),
-            opcode!(0xD4, ill, ZeroPageX),
-            opcode!(0xE4, cpx, ZeroPage),
-            opcode!(0xF4, ill, ZeroPageX),
+            opcode!(0x04, ill, ZeroPage, (1, 0)),
+            opcode!(0x14, ill, ZeroPageX, (1, 0)),
+            opcode!(0x24, bit, ZeroPage, (3, 0)),
+            opcode!(0x34, ill, ZeroPageX, (1, 0)),
+            opcode!(0x44, ill, ZeroPage, (1, 0)),
+            opcode!(0x54, ill, ZeroPageX, (1, 0)),
+            opcode!(0x64, ill, ZeroPage, (1, 0)),
+            opcode!(0x74, ill, ZeroPageX, (1, 0)),
+            opcode!(0x84, sty, ZeroPage, (3, 0)),
+            opcode!(0x94, sty, ZeroPageX, (4, 0)),
+            opcode!(0xA4, ldy, ZeroPage, (3, 0)),
+            opcode!(0xB4, ldy, ZeroPageX, (4, 0)),
+            opcode!(0xC4, cpy, ZeroPage, (3, 0)),
+            opcode!(0xD4, ill, ZeroPageX, (1, 0)),
+            opcode!(0xE4, cpx, ZeroPage, (3, 0)),
+            opcode!(0xF4, ill, ZeroPageX, (1, 0)),
 
             // Codes ending in 5
-            opcode!(0x05, ora, ZeroPage),
-            opcode!(0x15, ora, ZeroPageX),
-            opcode!(0x25, and, ZeroPage),
-            opcode!(0x35, and, ZeroPageX),
-            opcode!(0x45, eor, ZeroPage),
-            opcode!(0x55, eor, ZeroPageX),
-            opcode!(0x65, adc, ZeroPage),
-            opcode!(0x75, adc, ZeroPageX),
-            opcode!(0x85, sta, ZeroPage),
-            opcode!(0x95, sta, ZeroPageX),
-            opcode!(0xA5, lda, ZeroPage),
-            opcode!(0xB5, lda, ZeroPageX),
-            opcode!(0xC5, cmp, ZeroPage),
-            opcode!(0xD5, cmp, ZeroPageX),
-            opcode!(0xE5, sbc, ZeroPage),
-            opcode!(0xF5, sbc, ZeroPageX),
+            opcode!(0x05, ora, ZeroPage, (3, 0)),
+            opcode!(0x15, ora, ZeroPageX, (4, 0)),
+            opcode!(0x25, and, ZeroPage, (3, 0)),
+            opcode!(0x35, and, ZeroPageX, (4, 0)),
+            opcode!(0x45, eor, ZeroPage, (3, 0)),
+            opcode!(0x55, eor, ZeroPageX, (4, 0)),
+            opcode!(0x65, adc, ZeroPage, (3, 0)),
+            opcode!(0x75, adc, ZeroPageX, (4, 0)),
+            opcode!(0x85, sta, ZeroPage, (3, 0)),
+            opcode!(0x95, sta, ZeroPageX, (4, 0)),
+            opcode!(0xA5, lda, ZeroPage, (3, 0)),
+            opcode!(0xB5, lda, ZeroPageX, (4, 0)),
+            opcode!(0xC5, cmp, ZeroPage, (3, 0)),
+            opcode!(0xD5, cmp, ZeroPageX, (4, 0)),
+            opcode!(0xE5, sbc, ZeroPage, (3, 0)),
+            opcode!(0xF5, sbc, ZeroPageX, (4, 0)),
 
             // Codes ending in 6
-            opcode!(0x06, asl, ZeroPage),
-            opcode!(0x16, asl, ZeroPageX),
-            opcode!(0x26, rol, ZeroPage),
-            opcode!(0x36, rol, ZeroPageX),
-            opcode!(0x46, lsr, ZeroPage),
-            opcode!(0x56, lsr, ZeroPageX),
-            opcode!(0x66, ror, ZeroPage),
-            opcode!(0x76, ror, ZeroPageX),
-            opcode!(0x86, stx, ZeroPage),
-            opcode!(0x96, stx, ZeroPageY),
-            opcode!(0xA6, ldx, ZeroPage),
-            opcode!(0xB6, ldx, ZeroPageY),
-            opcode!(0xC6, dec, ZeroPage),
-            opcode!(0xD6, dec, ZeroPageX),
-            opcode!(0xE6, inc, ZeroPage),
-            opcode!(0xF6, inc, ZeroPageX),
+            opcode!(0x06, asl, ZeroPage, (5, 0)),
+            opcode!(0x16, asl, ZeroPageX, (6, 0)),
+            opcode!(0x26, rol, ZeroPage, (5, 0)),
+            opcode!(0x36, rol, ZeroPageX, (6, 0)),
+            opcode!(0x46, lsr, ZeroPage, (5, 0)),
+            opcode!(0x56, lsr, ZeroPageX, (6, 0)),
+            opcode!(0x66, ror, ZeroPage, (5, 0)),
+            opcode!(0x76, ror, ZeroPageX, (6, 0)),
+            opcode!(0x86, stx, ZeroPage, (3, 0)),
+            opcode!(0x96, stx, ZeroPageY, (4, 0)),
+            opcode!(0xA6, ldx, ZeroPage, (3, 0)),
+            opcode!(0xB6, ldx, ZeroPageY, (4, 0)),
+            opcode!(0xC6, dec, ZeroPage, (5, 0)),
+            opcode!(0xD6, dec, ZeroPageX, (6, 0)),
+            opcode!(0xE6, inc, ZeroPage, (5, 0)),
+            opcode!(0xF6, inc, ZeroPageX, (6, 0)),
 
             // Codes ending in 7
-            opcode!(0x07, ill, ZeroPage),
-            opcode!(0x17, ill, ZeroPageX),
-            opcode!(0x27, ill, ZeroPage),
-            opcode!(0x37, ill, ZeroPageX),
-            opcode!(0x47, ill, ZeroPage),
-            opcode!(0x57, ill, ZeroPageX),
-            opcode!(0x67, ill, ZeroPage),
-            opcode!(0x77, ill, ZeroPageX),
-            opcode!(0x87, ill, ZeroPage),
-            opcode!(0x97, ill, ZeroPageY),
-            opcode!(0xA7, ill, ZeroPage),
-            opcode!(0xB7, ill, ZeroPageY),
-            opcode!(0xC7, ill, ZeroPage),
-            opcode!(0xD7, ill, ZeroPageX),
-            opcode!(0xE7, ill, ZeroPage),
-            opcode!(0xF7, ill, ZeroPageX),
+            opcode!(0x07, ill, ZeroPage, (1, 0)),
+            opcode!(0x17, ill, ZeroPageX, (1, 0)),
+            opcode!(0x27, ill, ZeroPage, (1, 0)),
+            opcode!(0x37, ill, ZeroPageX, (1, 0)),
+            opcode!(0x47, ill, ZeroPage, (1, 0)),
+            opcode!(0x57, ill, ZeroPageX, (1, 0)),
+            opcode!(0x67, ill, ZeroPage, (1, 0)),
+            opcode!(0x77, ill, ZeroPageX, (1, 0)),
+            opcode!(0x87, ill, ZeroPage, (1, 0)),
+            opcode!(0x97, ill, ZeroPageY, (1, 0)),
+            opcode!(0xA7, ill, ZeroPage, (1, 0)),
+            opcode!(0xB7, ill, ZeroPageY, (1, 0)),
+            opcode!(0xC7, ill, ZeroPage, (1, 0)),
+            opcode!(0xD7, ill, ZeroPageX, (1, 0)),
+            opcode!(0xE7, ill, ZeroPage, (1, 0)),
+            opcode!(0xF7, ill, ZeroPageX, (1, 0)),
 
             // Codes ending in 8
-            opcode!(0x08, php, Implicit),
-            opcode!(0x18, clc, Implicit),
-            opcode!(0x28, plp, Implicit),
-            opcode!(0x38, sec, Implicit),
-            opcode!(0x48, pha, Implicit),
-            opcode!(0x58, cli, Implicit),
-            opcode!(0x68, pla, Implicit),
-            opcode!(0x78, sei, Implicit),
-            opcode!(0x88, dey, Implicit),
-            opcode!(0x98, tya, Implicit),
-            opcode!(0xA8, tay, Implicit),
-            opcode!(0xB8, clv, Implicit),
-            opcode!(0xC8, iny, Implicit),
-            opcode!(0xD8, cld, Implicit),
-            opcode!(0xE8, inx, Implicit),
-            opcode!(0xF8, sed, Implicit),
+            opcode!(0x08, php, Implicit, (3, 0)),
+            opcode!(0x18, clc, Implicit, (2, 0)),
+            opcode!(0x28, plp, Implicit, (4, 0)),
+            opcode!(0x38, sec, Implicit, (2, 0)),
+            opcode!(0x48, pha, Implicit, (3, 0)),
+            opcode!(0x58, cli, Implicit, (2, 0)),
+            opcode!(0x68, pla, Implicit, (4, 0)),
+            opcode!(0x78, sei, Implicit, (2, 0)),
+            opcode!(0x88, dey, Implicit, (2, 0)),
+            opcode!(0x98, tya, Implicit, (2, 0)),
+            opcode!(0xA8, tay, Implicit, (2, 0)),
+            opcode!(0xB8, clv, Implicit, (2, 0)),
+            opcode!(0xC8, iny, Implicit, (2, 0)),
+            opcode!(0xD8, cld, Implicit, (2, 0)),
+            opcode!(0xE8, inx, Implicit, (2, 0)),
+            opcode!(0xF8, sed, Implicit, (2, 0)),
 
             // Codes ending in 9
-            opcode!(0x09, ora, Immediate),
-            opcode!(0x19, ora, AbsoluteY),
-            opcode!(0x29, and, Immediate),
-            opcode!(0x39, and, AbsoluteY),
-            opcode!(0x49, eor, Immediate),
-            opcode!(0x59, eor, AbsoluteY),
-            opcode!(0x69, adc, Immediate),
-            opcode!(0x79, adc, AbsoluteY),
-            opcode!(0x89, ill, Immediate),
-            opcode!(0x99, sta, AbsoluteY),
-            opcode!(0xA9, lda, Immediate),
-            opcode!(0xB9, lda, AbsoluteY),
-            opcode!(0xC9, cmp, Immediate),
-            opcode!(0xD9, cmp, AbsoluteY),
-            opcode!(0xE9, sbc, Immediate),
-            opcode!(0xF9, sbc, AbsoluteY),
+            opcode!(0x09, ora, Immediate, (2, 0)),
+            opcode!(0x19, ora, AbsoluteY, (4, 0)),
+            opcode!(0x29, and, Immediate, (2, 0)),
+            opcode!(0x39, and, AbsoluteY, (4, 0)),
+            opcode!(0x49, eor, Immediate, (2, 0)),
+            opcode!(0x59, eor, AbsoluteY, (4, 0)),
+            opcode!(0x69, adc, Immediate, (2, 0)),
+            opcode!(0x79, adc, AbsoluteY, (4, 0)),
+            opcode!(0x89, ill, Immediate, (1, 0)),
+            opcode!(0x99, sta, AbsoluteY, (5, 0)),
+            opcode!(0xA9, lda, Immediate, (2, 0)),
+            opcode!(0xB9, lda, AbsoluteY, (4, 0)),
+            opcode!(0xC9, cmp, Immediate, (2, 0)),
+            opcode!(0xD9, cmp, AbsoluteY, (4, 0)),
+            opcode!(0xE9, sbc, Immediate, (2, 0)),
+            opcode!(0xF9, sbc, AbsoluteY, (4, 0)),
 
             // Codes ending in A
-            opcode!(0x0A, asl, Accumulator),
-            opcode!(0x1A, ill, Implicit),
-            opcode!(0x2A, rol, Accumulator),
-            opcode!(0x3A, ill, Implicit),
-            opcode!(0x4A, lsr, Accumulator),
-            opcode!(0x5A, ill, Implicit),
-            opcode!(0x6A, ror, Accumulator),
-            opcode!(0x7A, ill, Implicit),
-            opcode!(0x8A, txa, Implicit),
-            opcode!(0x9A, txs, Implicit),
-            opcode!(0xAA, tax, Implicit),
-            opcode!(0xBA, tsx, Implicit),
-            opcode!(0xCA, dex, Implicit),
-            opcode!(0xDA, ill, Implicit),
-            opcode!(0xEA, nop, Implicit),
-            opcode!(0xFA, ill, Implicit),
+            opcode!(0x0A, asl, Accumulator, (2, 0)),
+            opcode!(0x1A, ill, Implicit, (1, 0)),
+            opcode!(0x2A, rol, Accumulator, (2, 0)),
+            opcode!(0x3A, ill, Implicit, (1, 0)),
+            opcode!(0x4A, lsr, Accumulator, (2, 0)),
+            opcode!(0x5A, ill, Implicit, (1, 0)),
+            opcode!(0x6A, ror, Accumulator, (2, 0)),
+            opcode!(0x7A, ill, Implicit, (1, 0)),
+            opcode!(0x8A, txa, Implicit, (2, 0)),
+            opcode!(0x9A, txs, Implicit, (2, 0)),
+            opcode!(0xAA, tax, Implicit, (2, 0)),
+            opcode!(0xBA, tsx, Implicit, (2, 0)),
+            opcode!(0xCA, dex, Implicit, (2, 0)),
+            opcode!(0xDA, ill, Implicit, (1, 0)),
+            opcode!(0xEA, nop, Implicit, (2, 0)),
+            opcode!(0xFA, ill, Implicit, (1, 0)),
 
             // Codes ending in B
-            opcode!(0x0B, ill, Immediate),
-            opcode!(0x1B, ill, AbsoluteY),
-            opcode!(0x2B, ill, Immediate),
-            opcode!(0x3B, ill, AbsoluteY),
-            opcode!(0x4B, ill, Immediate),
-            opcode!(0x5B, ill, AbsoluteY),
-            opcode!(0x6B, ill, Immediate),
-            opcode!(0x7B, ill, AbsoluteY),
-            opcode!(0x8B, ill, Immediate),
-            opcode!(0x9B, ill, AbsoluteY),
-            opcode!(0xAB, ill, Immediate),
-            opcode!(0xBB, ill, AbsoluteY),
-            opcode!(0xCB, ill, Immediate),
-            opcode!(0xDB, ill, AbsoluteY),
-            opcode!(0xEB, ill, Immediate),
-            opcode!(0xFB, ill, AbsoluteY),
+            opcode!(0x0B, ill, Immediate, (1, 0)),
+            opcode!(0x1B, ill, AbsoluteY, (1, 0)),
+            opcode!(0x2B, ill, Immediate, (1, 0)),
+            opcode!(0x3B, ill, AbsoluteY, (1, 0)),
+            opcode!(0x4B, ill, Immediate, (1, 0)),
+            opcode!(0x5B, ill, AbsoluteY, (1, 0)),
+            opcode!(0x6B, ill, Immediate, (1, 0)),
+            opcode!(0x7B, ill, AbsoluteY, (1, 0)),
+            opcode!(0x8B, ill, Immediate, (1, 0)),
+            opcode!(0x9B, ill, AbsoluteY, (1, 0)),
+            opcode!(0xAB, ill, Immediate, (1, 0)),
+            opcode!(0xBB, ill, AbsoluteY, (1, 0)),
+            opcode!(0xCB, ill, Immediate, (1, 0)),
+            opcode!(0xDB, ill, AbsoluteY, (1, 0)),
+            opcode!(0xEB, ill, Immediate, (1, 0)),
+            opcode!(0xFB, ill, AbsoluteY, (1, 0)),
 
             // Codes ending in C
-            opcode!(0x0C, ill, Absolute),
-            opcode!(0x1C, ill, AbsoluteX),
-            opcode!(0x2C, bit, Absolute),
-            opcode!(0x3C, ill, AbsoluteX),
-            opcode!(0x4C, jmp, Absolute),
-            opcode!(0x5C, ill, AbsoluteX),
-            opcode!(0x6C, jmp, Indirect),
-            opcode!(0x7C, ill, AbsoluteX),
-            opcode!(0x8C, sty, Absolute),
-            opcode!(0x9C, ill, AbsoluteX),
-            opcode!(0xAC, ldy, Absolute),
-            opcode!(0xBC, ldy, AbsoluteX),
-            opcode!(0xCC, cpy, Absolute),
-            opcode!(0xDC, ill, AbsoluteX),
-            opcode!(0xEC, cpx, Absolute),
-            opcode!(0xFC, ill, AbsoluteX),
-
+            opcode!(0x0C, ill, Absolute, (1, 0)),
+            opcode!(0x1C, ill, AbsoluteX, (1, 0)),
+            opcode!(0x2C, bit, Absolute, (4, 0)),
+            opcode!(0x3C, ill, AbsoluteX, (1, 0)),
+            opcode!(0x4C, jmp, Absolute, (3, 0)),
+            opcode!(0x5C, ill, AbsoluteX, (1, 0)),
+            opcode!(0x6C, jmp, Indirect, (5, 0)),
+            opcode!(0x7C, ill, AbsoluteX, (1, 0)),
+            opcode!(0x8C, sty, Absolute, (4, 0)),
+            opcode!(0x9C, ill, AbsoluteX, (1, 0)),
+            opcode!(0xAC, ldy, Absolute, (4, 0)),
+            opcode!(0xBC, ldy, AbsoluteX, (4, 0)),
+            opcode!(0xCC, cpy, Absolute, (4, 0)),
+            opcode!(0xDC, ill, AbsoluteX, (1, 0)),
+            opcode!(0xEC, cpx, Absolute, (4, 0)),
+            opcode!(0xFC, ill, AbsoluteX, (1, 0)),
 
             // Codes ending in D
-            opcode!(0x0D, ora, Absolute),
-            opcode!(0x1D, ora, AbsoluteX),
-            opcode!(0x2D, and, Absolute),
-            opcode!(0x3D, and, AbsoluteX),
-            opcode!(0x4D, eor, Absolute),
-            opcode!(0x5D, eor, AbsoluteX),
-            opcode!(0x6D, adc, Absolute),
-            opcode!(0x7D, adc, AbsoluteX),
-            opcode!(0x8D, sta, Absolute),
-            opcode!(0x9D, sta, AbsoluteX),
-            opcode!(0xAD, lda, Absolute),
-            opcode!(0xBD, lda, AbsoluteX),
-            opcode!(0xCD, cmp, Absolute),
-            opcode!(0xDD, cmp, AbsoluteX),
-            opcode!(0xED, sbc, Absolute),
-            opcode!(0xFD, sbc, AbsoluteX),
+            opcode!(0x0D, ora, Absolute, (4, 0)),
+            opcode!(0x1D, ora, AbsoluteX, (4, 0)),
+            opcode!(0x2D, and, Absolute, (4, 0)),
+            opcode!(0x3D, and, AbsoluteX, (4, 0)),
+            opcode!(0x4D, eor, Absolute, (4, 0)),
+            opcode!(0x5D, eor, AbsoluteX, (4, 0)),
+            opcode!(0x6D, adc, Absolute, (4, 0)),
+            opcode!(0x7D, adc, AbsoluteX, (4, 0)),
+            opcode!(0x8D, sta, Absolute, (4, 0)),
+            opcode!(0x9D, sta, AbsoluteX, (5, 0)),
+            opcode!(0xAD, lda, Absolute, (4, 0)),
+            opcode!(0xBD, lda, AbsoluteX, (4, 0)),
+            opcode!(0xCD, cmp, Absolute, (4, 0)),
+            opcode!(0xDD, cmp, AbsoluteX, (4, 0)),
+            opcode!(0xED, sbc, Absolute, (4, 0)),
+            opcode!(0xFD, sbc, AbsoluteX, (4, 0)),
 
             // Codes endding in E
-            opcode!(0x0E, asl, Absolute),
-            opcode!(0x1E, asl, AbsoluteX),
-            opcode!(0x2E, rol, Absolute),
-            opcode!(0x3E, rol, AbsoluteX),
-            opcode!(0x4E, lsr, Absolute),
-            opcode!(0x5E, lsr, AbsoluteX),
-            opcode!(0x6E, ror, Absolute),
-            opcode!(0x7E, ror, AbsoluteX),
-            opcode!(0x8E, stx, Absolute),
-            opcode!(0x9E, ill, AbsoluteX),
-            opcode!(0xAE, ldx, Absolute),
-            opcode!(0xBE, ldx, AbsoluteY),
-            opcode!(0xCE, dec, Absolute),
-            opcode!(0xDE, dec, AbsoluteX),
-            opcode!(0xEE, inc, Absolute),
-            opcode!(0xFE, inc, AbsoluteX),
+            opcode!(0x0E, asl, Absolute, (6, 0)),
+            opcode!(0x1E, asl, AbsoluteX, (7, 0)),
+            opcode!(0x2E, rol, Absolute, (6, 0)),
+            opcode!(0x3E, rol, AbsoluteX, (7, 0)),
+            opcode!(0x4E, lsr, Absolute, (6, 0)),
+            opcode!(0x5E, lsr, AbsoluteX, (7, 0)),
+            opcode!(0x6E, ror, Absolute, (6, 0)),
+            opcode!(0x7E, ror, AbsoluteX, (7, 0)),
+            opcode!(0x8E, stx, Absolute, (4, 0)),
+            opcode!(0x9E, ill, AbsoluteX, (1, 0)),
+            opcode!(0xAE, ldx, Absolute, (4, 0)),
+            opcode!(0xBE, ldx, AbsoluteY, (4, 0)),
+            opcode!(0xCE, dec, Absolute, (6, 0)),
+            opcode!(0xDE, dec, AbsoluteX, (7, 0)),
+            opcode!(0xEE, inc, Absolute, (6, 0)),
+            opcode!(0xFE, inc, AbsoluteX, (7, 0)),
 
             // Codes endding in F
-            opcode!(0x0F, ill, Absolute),
-            opcode!(0x1F, ill, AbsoluteX),
-            opcode!(0x2F, ill, Absolute),
-            opcode!(0x3F, ill, AbsoluteX),
-            opcode!(0x4F, ill, Absolute),
-            opcode!(0x5F, ill, AbsoluteX),
-            opcode!(0x6F, ill, Absolute),
-            opcode!(0x7F, ill, AbsoluteX),
-            opcode!(0x8F, ill, Absolute),
-            opcode!(0x9F, ill, AbsoluteX),
-            opcode!(0xAF, ill, Absolute),
-            opcode!(0xBF, ill, AbsoluteY),
-            opcode!(0xCF, ill, Absolute),
-            opcode!(0xDF, ill, AbsoluteX),
-            opcode!(0xEF, ill, Absolute),
-            opcode!(0xFF, ill, AbsoluteX),
+            opcode!(0x0F, ill, Absolute, (1, 0)),
+            opcode!(0x1F, ill, AbsoluteX, (1, 0)),
+            opcode!(0x2F, ill, Absolute, (1, 0)),
+            opcode!(0x3F, ill, AbsoluteX, (1, 0)),
+            opcode!(0x4F, ill, Absolute, (1, 0)),
+            opcode!(0x5F, ill, AbsoluteX, (1, 0)),
+            opcode!(0x6F, ill, Absolute, (1, 0)),
+            opcode!(0x7F, ill, AbsoluteX, (1, 0)),
+            opcode!(0x8F, ill, Absolute, (1, 0)),
+            opcode!(0x9F, ill, AbsoluteX, (1, 0)),
+            opcode!(0xAF, ill, Absolute, (1, 0)),
+            opcode!(0xBF, ill, AbsoluteY, (1, 0)),
+            opcode!(0xCF, ill, Absolute, (1, 0)),
+            opcode!(0xDF, ill, AbsoluteX, (1, 0)),
+            opcode!(0xEF, ill, Absolute, (1, 0)),
+            opcode!(0xFF, ill, AbsoluteX, (1, 0)),
+
         ];
 
         // Turn list of codes into opcode lookup table
@@ -380,11 +388,13 @@ lazy_static! {
 }
 
 #[derive(Copy, Clone)]
-struct OpCodeTableEntry {
+pub struct OpCodeTableEntry {
     pub code: u8,
     pub operand_size: usize,
     pub execute_fn: fn(cpu: &mut Cpu, addr: u16) -> Result<()>,
     pub format_fn: fn(cpu: &Cpu, addr: u16) -> String,
+    pub cycle_count_before: usize,
+    pub cycle_count_after: usize,
 }
 
 impl Default for OpCodeTableEntry {
@@ -394,6 +404,8 @@ impl Default for OpCodeTableEntry {
             operand_size: 0,
             execute_fn: |_, _| unimplemented!(),
             format_fn: |_, _| "N/A".to_string(),
+            cycle_count_before: 0,
+            cycle_count_after: 0,
         }
     }
 }
@@ -414,8 +426,8 @@ trait Operand {
         unimplemented!()
     }
 
-    fn extra_write_cycle(&self) -> bool {
-        false
+    fn apply_page_cross_penality(&self, cpu: &mut Cpu) -> Result<()> {
+        Ok(())
     }
 
     fn load_operand(&self, cpu: &mut Cpu) -> Result<u8> {
@@ -423,9 +435,6 @@ trait Operand {
     }
 
     fn store_operand(&self, cpu: &mut Cpu, value: u8) -> Result<()> {
-        if self.extra_write_cycle() {
-            cpu.advance_clock(1)?;
-        }
         cpu.write(self.operand_addr(), value)
     }
 }
@@ -456,9 +465,6 @@ impl Operand for Implicit {
     const OPERAND_SIZE: usize = 0;
 
     fn load<T: MaybeMutableCpu>(mut cpu: T, _addr: u16) -> Result<Self> {
-        // Even Implicit address modes seem to be spending an extra
-        // cycle to load the operand.
-        cpu.advance_clock(1)?;
         Ok(Self {})
     }
 
@@ -513,7 +519,7 @@ impl Operand for Absolute {
 struct AbsoluteX {
     base_addr: u16,
     operand_addr: u16,
-    extra_write_cycle: bool,
+    page_cross: bool,
 }
 
 impl Operand for AbsoluteX {
@@ -523,13 +529,10 @@ impl Operand for AbsoluteX {
         let base_addr = cpu.read_or_peek_u16(addr + 1)?;
         let operand_addr = base_addr.wrapping_add(cpu.immutable().x as u16);
         let page_cross = base_addr & 0xFF00 != operand_addr & 0xFF00;
-        if page_cross {
-            cpu.advance_clock(1)?;
-        }
         Ok(Self {
             base_addr,
             operand_addr,
-            extra_write_cycle: !page_cross,
+            page_cross,
         })
     }
 
@@ -537,8 +540,12 @@ impl Operand for AbsoluteX {
         self.operand_addr
     }
 
-    fn extra_write_cycle(&self) -> bool {
-        self.extra_write_cycle
+    fn apply_page_cross_penality(&self, cpu: &mut Cpu) -> Result<()> {
+        if self.page_cross {
+            cpu.advance_clock(1)
+        } else {
+            Ok(())
+        }
     }
 
     fn format(&self, _cpu: &Cpu) -> String {
@@ -549,7 +556,7 @@ impl Operand for AbsoluteX {
 struct AbsoluteY {
     base_addr: u16,
     operand_addr: u16,
-    extra_write_cycle: bool,
+    page_cross: bool,
 }
 impl Operand for AbsoluteY {
     const OPERAND_SIZE: usize = 2;
@@ -558,13 +565,10 @@ impl Operand for AbsoluteY {
         let base_addr = cpu.read_or_peek_u16(addr + 1)?;
         let operand_addr = base_addr.wrapping_add(cpu.immutable().y as u16);
         let page_cross = base_addr & 0xFF00 != operand_addr & 0xFF00;
-        if page_cross {
-            cpu.advance_clock(1)?;
-        }
         Ok(Self {
             base_addr,
             operand_addr,
-            extra_write_cycle: !page_cross,
+            page_cross,
         })
     }
 
@@ -572,8 +576,12 @@ impl Operand for AbsoluteY {
         self.operand_addr
     }
 
-    fn extra_write_cycle(&self) -> bool {
-        self.extra_write_cycle
+    fn apply_page_cross_penality(&self, cpu: &mut Cpu) -> Result<()> {
+        if self.page_cross {
+            cpu.advance_clock(1)
+        } else {
+            Ok(())
+        }
     }
 
     fn format(&self, _cpu: &Cpu) -> String {
@@ -725,7 +733,7 @@ impl Operand for Indirect {
 struct IndirectY {
     indirect_addr: u8,
     operand_addr: u16,
-    extra_write_cycle: bool,
+    page_cross: bool,
 }
 impl Operand for IndirectY {
     const OPERAND_SIZE: usize = 1;
@@ -739,14 +747,10 @@ impl Operand for IndirectY {
         let operand_addr = base_addr.wrapping_add(cpu.immutable().y as u16);
         let page_cross = base_addr & 0xFF00 != operand_addr & 0xFF00;
 
-        if page_cross {
-            cpu.advance_clock(1)?;
-        }
-
         Ok(Self {
             indirect_addr,
             operand_addr,
-            extra_write_cycle: !page_cross,
+            page_cross,
         })
     }
 
@@ -754,8 +758,12 @@ impl Operand for IndirectY {
         self.operand_addr
     }
 
-    fn extra_write_cycle(&self) -> bool {
-        self.extra_write_cycle
+    fn apply_page_cross_penality(&self, cpu: &mut Cpu) -> Result<()> {
+        if self.page_cross {
+            cpu.advance_clock(1)
+        } else {
+            Ok(())
+        }
     }
 
     fn format(&self, _cpu: &Cpu) -> String {
@@ -838,18 +846,18 @@ fn jmp<AM: Operand>(cpu: &mut Cpu, operand: AM) -> Result<()> {
 fn jsr<AM: Operand>(cpu: &mut Cpu, operand: AM) -> Result<()> {
     cpu.stack_push_u16(cpu.program_counter - 1)?;
     cpu.program_counter = operand.operand_addr();
-    cpu.advance_clock(1)
+    Ok(())
 }
 
 fn rts<AM: Operand>(cpu: &mut Cpu, _operand: AM) -> Result<()> {
     cpu.program_counter = cpu.stack_pop_u16()? + 1;
-    cpu.advance_clock(2)
+    Ok(())
 }
 
 fn rti<AM: Operand>(cpu: &mut Cpu, _operand: AM) -> Result<()> {
     pop_status_flags(cpu)?;
     cpu.program_counter = cpu.stack_pop_u16()?;
-    cpu.advance_clock(1)
+    Ok(())
 }
 
 // ST* (Store)
@@ -871,18 +879,21 @@ fn sty<AM: Operand>(cpu: &mut Cpu, operand: AM) -> Result<()> {
 fn lda<AM: Operand>(cpu: &mut Cpu, operand: AM) -> Result<()> {
     cpu.a = operand.load_operand(cpu)?;
     update_negative_zero_flags(cpu, cpu.a);
+    operand.apply_page_cross_penality(cpu)?;
     Ok(())
 }
 
 fn ldy<AM: Operand>(cpu: &mut Cpu, operand: AM) -> Result<()> {
     cpu.y = operand.load_operand(cpu)?;
     update_negative_zero_flags(cpu, cpu.y);
+    operand.apply_page_cross_penality(cpu)?;
     Ok(())
 }
 
 fn ldx<AM: Operand>(cpu: &mut Cpu, operand: AM) -> Result<()> {
     cpu.x = operand.load_operand(cpu)?;
     update_negative_zero_flags(cpu, cpu.x);
+    operand.apply_page_cross_penality(cpu)?;
     Ok(())
 }
 
@@ -892,7 +903,7 @@ fn inc<AM: Operand>(cpu: &mut Cpu, operand: AM) -> Result<()> {
     let value = operand.load_operand(cpu)?.wrapping_add(1);
     operand.store_operand(cpu, value)?;
     update_negative_zero_flags(cpu, value);
-    cpu.advance_clock(1)
+    Ok(())
 }
 
 fn inx<AM: Operand>(cpu: &mut Cpu, _operand: AM) -> Result<()> {
@@ -913,7 +924,7 @@ fn dec<AM: Operand>(cpu: &mut Cpu, operand: AM) -> Result<()> {
     let value = operand.load_operand(cpu)?.wrapping_sub(1);
     operand.store_operand(cpu, value)?;
     update_negative_zero_flags(cpu, value);
-    cpu.advance_clock(1)
+    Ok(())
 }
 
 fn dex<AM: Operand>(cpu: &mut Cpu, _operand: AM) -> Result<()> {
@@ -1033,12 +1044,12 @@ fn php<AM: Operand>(cpu: &mut Cpu, _operand: AM) -> Result<()> {
 fn pla<AM: Operand>(cpu: &mut Cpu, _operand: AM) -> Result<()> {
     cpu.a = cpu.stack_pop()?;
     update_negative_zero_flags(cpu, cpu.a);
-    cpu.advance_clock(1)
+    Ok(())
 }
 
 fn plp<AM: Operand>(cpu: &mut Cpu, _operand: AM) -> Result<()> {
     pop_status_flags(cpu)?;
-    cpu.advance_clock(1)
+    Ok(())
 }
 
 // add / sub
@@ -1121,7 +1132,7 @@ fn lsr<AM: Operand>(cpu: &mut Cpu, operand: AM) -> Result<()> {
     operand.store_operand(cpu, result)?;
     update_negative_zero_flags(cpu, result);
     cpu.status_flags.carry = (value & 0x01) != 0;
-    cpu.advance_clock(1)
+    Ok(())
 }
 
 fn asl<AM: Operand>(cpu: &mut Cpu, operand: AM) -> Result<()> {
@@ -1130,7 +1141,7 @@ fn asl<AM: Operand>(cpu: &mut Cpu, operand: AM) -> Result<()> {
     operand.store_operand(cpu, result)?;
     update_negative_zero_flags(cpu, result);
     cpu.status_flags.carry = (value & 0x80) != 0;
-    cpu.advance_clock(1)
+    Ok(())
 }
 
 fn ror<AM: Operand>(cpu: &mut Cpu, operand: AM) -> Result<()> {
@@ -1142,7 +1153,7 @@ fn ror<AM: Operand>(cpu: &mut Cpu, operand: AM) -> Result<()> {
     operand.store_operand(cpu, result)?;
     update_negative_zero_flags(cpu, result);
     cpu.status_flags.carry = (operand2 & 0x01) != 0;
-    cpu.advance_clock(1)
+    Ok(())
 }
 
 fn rol<AM: Operand>(cpu: &mut Cpu, operand: AM) -> Result<()> {
@@ -1154,7 +1165,7 @@ fn rol<AM: Operand>(cpu: &mut Cpu, operand: AM) -> Result<()> {
     operand.store_operand(cpu, result)?;
     update_negative_zero_flags(cpu, result);
     cpu.status_flags.carry = (operand2 & 0x80) != 0;
-    cpu.advance_clock(1)
+    Ok(())
 }
 
 // Register Transfers
