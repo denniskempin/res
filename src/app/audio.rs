@@ -25,10 +25,8 @@ where
 {
     let channels = config.channels as usize;
 
-    // Generate noise samples
-    use fundsp::hacker::*;
-    let mut noise = white();
-    let mut next_value = move || noise.get_mono() as f32;
+    // Generate samples here.
+    let mut next_value = || 0_f32;
 
     let err_fn = |err| eprintln!("an error occurred on stream: {}", err);
 
