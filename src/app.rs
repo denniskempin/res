@@ -26,6 +26,36 @@ use crate::nes::joypad::JoypadButton;
 use crate::nes::Record;
 use crate::nes::System;
 
+const PROGRAMS: &[(&str, &[u8])] = &[
+    (
+        "nestest",
+        include_bytes!("../roms/programs/nestest.nes").as_slice(),
+    ),
+    (
+        "instr_test_v5",
+        include_bytes!("../roms/programs/instr_test_v5.nes").as_slice(),
+    ),
+    (
+        "scanline",
+        include_bytes!("../roms/programs/scanline.nes").as_slice(),
+    ),
+];
+
+const GAMES: &[(&str, &[u8])] = &[
+    (
+        "Blaster",
+        include_bytes!("../roms/games/blaster.nes").as_slice(),
+    ),
+    (
+        "Alter Ego",
+        include_bytes!("../roms/games/alter_ego.nes").as_slice(),
+    ),
+    (
+        "Lan Master",
+        include_bytes!("../roms/games/lan_master.nes").as_slice(),
+    ),
+];
+
 pub struct EmulatorApp {
     emulator: System,
     loaded: bool,
@@ -56,6 +86,11 @@ impl EmulatorApp {
         }
     }
 
+    fn load_rom(&mut self, data: &[u8]) {
+        self.emulator = System::with_ines_bytes(data).unwrap();
+        self.loaded = true;
+    }
+
     fn load_dropped_file(&mut self, drop: &DroppedFile) {
         if let Some(path) = &drop.path {
             match path.extension().and_then(OsStr::to_str) {
@@ -67,7 +102,7 @@ impl EmulatorApp {
                 Some("nes") => {
                     let mut data: Vec<u8> = Vec::new();
                     File::open(path).unwrap().read_to_end(&mut data).unwrap();
-                    self.emulator = System::with_ines_bytes(&data).unwrap();
+                    self.load_rom(&data);
                 }
                 _ => {
                     panic!("Unknown file type");
@@ -76,9 +111,8 @@ impl EmulatorApp {
         } else if let Some(bytes) = &drop.bytes {
             #[cfg(target_arch = "wasm32")]
             crate::wasm::save_rom_in_local_storage(bytes);
-            self.emulator = System::with_ines_bytes(&*bytes).unwrap();
+            self.load_rom(&*bytes);
         }
-        self.loaded = true;
     }
 
     fn update_keys(&mut self, input: &InputState) {
@@ -116,8 +150,20 @@ impl EmulatorApp {
                 if ui.button("Play Audio").clicked() {
                     self.audio_engine.start();
                 }
-                ui.menu_button("Programs", |_ui| {});
-                ui.menu_button("Games", |_ui| {});
+                ui.menu_button("Programs", |ui| {
+                    for program in PROGRAMS {
+                        if ui.button(program.0).clicked() {
+                            self.load_rom(program.1);
+                        }
+                    }
+                });
+                ui.menu_button("Games", |ui| {
+                    for program in GAMES {
+                        if ui.button(program.0).clicked() {
+                            self.load_rom(program.1);
+                        }
+                    }
+                });
                 ui.label("(Or drop a .nes file to load it)");
             });
             columns[1].with_layout(Layout::right_to_left(), |ui| {

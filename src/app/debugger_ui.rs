@@ -123,7 +123,7 @@ impl Debugger {
             pattern_texture: cc
                 .egui_ctx
                 .load_texture("Pattern Table", ColorImage::example()),
-            command: None,
+            command: Some(DebugCommand::Run),
             previous_states: RingBuffer::default(),
             alert: Alert::default(),
             cpu_memory_viewer: MemoryViewer::new("CPU Memory"),
