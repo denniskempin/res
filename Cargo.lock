@@ -2460,6 +2460,7 @@ dependencies = [
  "thiserror",
  "tracing-subscriber",
  "tracing-wasm",
+ "wasm-bindgen-futures",
  "wasm-timer",
  "web-sys",
 ]

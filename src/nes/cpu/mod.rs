@@ -178,7 +178,7 @@ impl CpuBus for ResCpuBus {
 ////////////////////////////////////////////////////////////////////////////////
 // StatusFlags
 
-#[derive(PackedStruct, Encode, Decode, Clone, Debug, Default, Copy, PartialEq)]
+#[derive(PackedStruct, Encode, Decode, Clone, Debug, Default, Copy, PartialEq, Eq)]
 #[packed_struct(bit_numbering = "msb0")]
 pub struct StatusFlags {
     negative: bool,

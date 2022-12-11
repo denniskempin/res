@@ -45,10 +45,6 @@ impl Joypad {
         if !self.strobe {
             self.index = (self.index + 1) % 8;
         }
-        if pressed {
-            1
-        } else {
-            0
-        }
+        pressed.into()
     }
 }

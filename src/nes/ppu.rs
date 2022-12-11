@@ -825,7 +825,7 @@ impl VramAddress {
 ////////////////////////////////////////////////////////////////////////////////
 // Registers
 
-#[derive(PackedStruct, Encode, Decode, Clone, Debug, Default, Copy, PartialEq)]
+#[derive(PackedStruct, Encode, Decode, Clone, Debug, Default, Copy, PartialEq, Eq)]
 #[packed_struct(bit_numbering = "msb0", size_bytes = "1")]
 pub struct ControlRegister {
     pub generate_nmi: bool,
@@ -838,7 +838,7 @@ pub struct ControlRegister {
     pub nametable: u8,
 }
 
-#[derive(PackedStruct, Encode, Decode, Clone, Debug, Default, Copy, PartialEq)]
+#[derive(PackedStruct, Encode, Decode, Clone, Debug, Default, Copy, PartialEq, Eq)]
 #[packed_struct(bit_numbering = "msb0", size_bytes = "1")]
 pub struct StatusRegister {
     pub vblank_started: bool,
@@ -856,7 +856,7 @@ impl StatusRegister {
     }
 }
 
-#[derive(PackedStruct, Encode, Decode, Clone, Debug, Default, Copy, PartialEq)]
+#[derive(PackedStruct, Encode, Decode, Clone, Debug, Default, Copy, PartialEq, Eq)]
 #[packed_struct(bit_numbering = "msb0", size_bytes = "1")]
 pub struct MaskRegister {
     pub emphasize_blue: bool,

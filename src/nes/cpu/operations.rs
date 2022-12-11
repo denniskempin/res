@@ -455,7 +455,7 @@ impl Operand for Immediate {
     }
 
     fn format(&self, _cpu: &Cpu) -> String {
-        return format!(" #{:02X}", self.operand);
+        format!(" #{:02X}", self.operand)
     }
 }
 
@@ -511,7 +511,7 @@ impl Operand for Absolute {
     }
 
     fn format(&self, _cpu: &Cpu) -> String {
-        return format!(" ${:04X}", self.operand_addr);
+        format!(" ${:04X}", self.operand_addr)
     }
 }
 
@@ -548,7 +548,7 @@ impl Operand for AbsoluteX {
     }
 
     fn format(&self, _cpu: &Cpu) -> String {
-        return format!(" {:04X}+X = ${:04X}", self.base_addr, self.operand_addr);
+        format!(" {:04X}+X = ${:04X}", self.base_addr, self.operand_addr)
     }
 }
 
@@ -584,7 +584,7 @@ impl Operand for AbsoluteY {
     }
 
     fn format(&self, _cpu: &Cpu) -> String {
-        return format!(" {:04X}+Y = ${:04X}", self.base_addr, self.operand_addr);
+        format!(" {:04X}+Y = ${:04X}", self.base_addr, self.operand_addr)
     }
 }
 
@@ -609,7 +609,7 @@ impl Operand for ZeroPage {
     }
 
     fn format(&self, _cpu: &Cpu) -> String {
-        return format!(" $00{:02X}", self.operand_addr);
+        format!(" $00{:02X}", self.operand_addr)
     }
 }
 struct ZeroPageX {
@@ -633,7 +633,7 @@ impl Operand for ZeroPageX {
     }
 
     fn format(&self, _cpu: &Cpu) -> String {
-        return format!(" {:02X}+X = ${:04X}", self.base_addr, self.operand_addr);
+        format!(" {:02X}+X = ${:04X}", self.base_addr, self.operand_addr)
     }
 }
 
@@ -659,7 +659,7 @@ impl Operand for ZeroPageY {
     }
 
     fn format(&self, _cpu: &Cpu) -> String {
-        return format!(" {:02X}+Y = ${:04X}", self.base_addr, self.operand_addr);
+        format!(" {:02X}+Y = ${:04X}", self.base_addr, self.operand_addr)
     }
 }
 
@@ -689,7 +689,7 @@ impl Operand for Relative {
     }
 
     fn format(&self, _cpu: &Cpu) -> String {
-        return format!(" {:+02X} = ${:04X}", self.relative_addr, self.operand_addr);
+        format!(" {:+02X} = ${:04X}", self.relative_addr, self.operand_addr)
     }
 }
 
@@ -727,10 +727,10 @@ impl Operand for Indirect {
     }
 
     fn format(&self, _cpu: &Cpu) -> String {
-        return format!(
+        format!(
             " (${:04X}) = ${:04X}",
             self.indirect_addr, self.operand_addr
-        );
+        )
     }
 }
 
@@ -771,10 +771,10 @@ impl Operand for IndirectY {
     }
 
     fn format(&self, _cpu: &Cpu) -> String {
-        return format!(
+        format!(
             " (${:02X})+Y = ${:04X}",
             self.indirect_addr, self.operand_addr
-        );
+        )
     }
 }
 
@@ -803,10 +803,10 @@ impl Operand for IndirectX {
     }
 
     fn format(&self, _cpu: &Cpu) -> String {
-        return format!(
+        format!(
             " (${:02X}+X) = ${:04X}",
             self.indirect_addr, self.operand_addr
-        );
+        )
     }
 }
 

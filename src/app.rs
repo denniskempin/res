@@ -77,9 +77,11 @@ impl EmulatorApp {
                 System::new()
             },
             loaded,
-            framebuffer_texture: cc
-                .egui_ctx
-                .load_texture("Framebuffer", ColorImage::example()),
+            framebuffer_texture: cc.egui_ctx.load_texture(
+                "Framebuffer",
+                ColorImage::example(),
+                Default::default(),
+            ),
             debug_mode: true,
             debug_state: Debugger::new(cc),
             audio_engine: AudioEngine::new(),
@@ -111,7 +113,7 @@ impl EmulatorApp {
         } else if let Some(bytes) = &drop.bytes {
             #[cfg(target_arch = "wasm32")]
             crate::wasm::save_rom_in_local_storage(bytes);
-            self.load_rom(&*bytes);
+            self.load_rom(bytes);
         }
     }
 
@@ -146,7 +148,7 @@ impl EmulatorApp {
 
     fn menu_bar(&mut self, ui: &mut Ui) {
         ui.columns(2, |columns| {
-            columns[0].with_layout(Layout::left_to_right(), |ui| {
+            columns[0].with_layout(Layout::left_to_right(egui::Align::Min), |ui| {
                 if ui.button("Play Audio").clicked() {
                     self.audio_engine.start();
                 }
@@ -166,7 +168,7 @@ impl EmulatorApp {
                 });
                 ui.label("(Or drop a .nes file to load it)");
             });
-            columns[1].with_layout(Layout::right_to_left(), |ui| {
+            columns[1].with_layout(Layout::right_to_left(egui::Align::Min), |ui| {
                 if ui.button("Debug").clicked() {
                     self.debug_mode = !self.debug_mode;
                 }
@@ -187,8 +189,10 @@ impl EmulatorApp {
     }
 
     fn main_display(&mut self, ui: &mut Ui) {
-        self.framebuffer_texture
-            .set(self.emulator.ppu().framebuffer.as_color_image());
+        self.framebuffer_texture.set(
+            self.emulator.ppu().framebuffer.as_color_image(),
+            Default::default(),
+        );
 
         let desired_size = ui.available_size();
         let (whole_rect, _) =

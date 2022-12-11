@@ -119,10 +119,16 @@ pub struct Debugger {
 impl Debugger {
     pub fn new(cc: &CreationContext<'_>) -> Self {
         Debugger {
-            nametable_texture: cc.egui_ctx.load_texture("Nametable", ColorImage::example()),
-            pattern_texture: cc
-                .egui_ctx
-                .load_texture("Pattern Table", ColorImage::example()),
+            nametable_texture: cc.egui_ctx.load_texture(
+                "Nametable",
+                ColorImage::example(),
+                Default::default(),
+            ),
+            pattern_texture: cc.egui_ctx.load_texture(
+                "Pattern Table",
+                ColorImage::example(),
+                Default::default(),
+            ),
             command: Some(DebugCommand::Run),
             previous_states: RingBuffer::default(),
             alert: Alert::default(),
@@ -218,14 +224,16 @@ impl Debugger {
                 ui.label(RichText::new("Nametable").strong());
 
                 self.nametable_texture
-                    .set(emulator.ppu().debug_render_nametable());
+                    .set(emulator.ppu().debug_render_nametable(), Default::default());
                 ui.image(&self.nametable_texture, vec2(400.0, 220.0));
             });
             ui.vertical(|ui| {
                 ui.label(RichText::new("Pattern Table").strong());
 
-                self.pattern_texture
-                    .set(emulator.ppu().debug_render_pattern_table());
+                self.pattern_texture.set(
+                    emulator.ppu().debug_render_pattern_table(),
+                    Default::default(),
+                );
                 ui.image(&self.pattern_texture, vec2(400.0, 220.0));
             });
 
