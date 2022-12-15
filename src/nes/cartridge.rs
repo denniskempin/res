@@ -1,3 +1,4 @@
+mod mmc1;
 mod nrom;
 
 use std::fmt::Formatter;
@@ -9,6 +10,8 @@ use bincode::Encode;
 use nrom::NromMapper;
 use packed_struct::prelude::*;
 use thiserror::Error;
+
+use self::mmc1::Mmc1Mapper;
 
 #[derive(Error)]
 pub enum CartridgeError {
@@ -72,6 +75,7 @@ pub struct InesHeader {
 #[derive(Encode, Decode, Clone)]
 enum MapperEnum {
     NromMapper(NromMapper),
+    Mmc1Mapper(Mmc1Mapper),
 }
 
 #[derive(Encode, Decode, Clone)]
@@ -126,6 +130,12 @@ impl Cartridge {
                     &raw[prg_end..chr_end],
                 ))
             }
+            1 => {
+                self.mapper = MapperEnum::Mmc1Mapper(Mmc1Mapper::new(
+                    &raw[prg_start..prg_end],
+                    &raw[prg_end..chr_end],
+                ))
+            }
             _ => return Err(anyhow!("Unsupported mapper {mapper_id}")),
         };
         Ok(())
@@ -134,36 +144,42 @@ impl Cartridge {
     pub fn cpu_bus_peek(&self, addr: u16) -> Option<u8> {
         match &self.mapper {
             MapperEnum::NromMapper(mapper) => mapper.cpu_bus_peek(addr),
+            MapperEnum::Mmc1Mapper(mapper) => mapper.cpu_bus_peek(addr),
         }
     }
 
     pub fn cpu_bus_read(&mut self, addr: u16) -> CartridgeResult<u8> {
         match &mut self.mapper {
             MapperEnum::NromMapper(mapper) => mapper.cpu_bus_read(addr),
+            MapperEnum::Mmc1Mapper(mapper) => mapper.cpu_bus_read(addr),
         }
     }
 
     pub fn cpu_bus_write(&mut self, addr: u16, value: u8) -> CartridgeResult<()> {
         match &mut self.mapper {
             MapperEnum::NromMapper(mapper) => mapper.cpu_bus_write(addr, value),
+            MapperEnum::Mmc1Mapper(mapper) => mapper.cpu_bus_write(addr, value),
         }
     }
 
     pub fn ppu_bus_peek(&self, addr: u16) -> Option<u8> {
         match &self.mapper {
             MapperEnum::NromMapper(mapper) => mapper.ppu_bus_peek(addr),
+            MapperEnum::Mmc1Mapper(mapper) => mapper.ppu_bus_peek(addr),
         }
     }
 
     pub fn ppu_bus_read(&mut self, addr: u16) -> CartridgeResult<u8> {
         match &mut self.mapper {
             MapperEnum::NromMapper(mapper) => mapper.ppu_bus_read(addr),
+            MapperEnum::Mmc1Mapper(mapper) => mapper.ppu_bus_read(addr),
         }
     }
 
     pub fn ppu_bus_write(&mut self, addr: u16, value: u8) -> CartridgeResult<()> {
         match &mut self.mapper {
             MapperEnum::NromMapper(mapper) => mapper.ppu_bus_write(addr, value),
+            MapperEnum::Mmc1Mapper(mapper) => mapper.ppu_bus_write(addr, value),
         }
     }
 }

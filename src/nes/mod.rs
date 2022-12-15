@@ -182,7 +182,9 @@ impl System {
                 return Err(anyhow!("CPU halted"));
             }
 
-            self.cpu.execute_one().unwrap();
+            if let Err(e) = self.cpu.execute_one() {
+                return Err(anyhow!("Execution failed: {:?}", e));
+            }
 
             if should_break(&self.cpu) {
                 return Ok(());

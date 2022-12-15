@@ -66,7 +66,7 @@ impl MemoryViewer {
         egui::Window::new(&self.title)
             .open(&mut self.is_open)
             .show(ui.ctx(), |ui| {
-                ui.style_mut().override_font_id = Some(FontId::monospace(14.0));
+                ui.style_mut().override_font_id = Some(FontId::monospace(10.0));
                 ui.add(
                     Label::new(RichText::new(
                         "      00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F",
@@ -271,7 +271,7 @@ impl Debugger {
     fn operations_panel(&mut self, ui: &mut Ui, emulator: &System) {
         ui.label(RichText::new("Operations").strong());
         let debugger = emulator.cpu().debugger.borrow();
-        let last_ops = debugger.last_ops.iter().rev();
+        let last_ops = debugger.last_ops.iter().take(10).rev();
         for addr in last_ops {
             self.operation_label(ui, *addr, emulator, false);
         }

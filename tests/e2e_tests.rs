@@ -35,6 +35,23 @@ pub fn test_super_mario_bros() {
 }
 
 #[test]
+pub fn test_loz() {
+    // Tests MMC1 bank switching, CHR RAM and dynamic mirroring
+    test_playback(
+        "loz",
+        &[
+            100,  // Title screen
+            600,  // Initial game screen
+            760,  // Scroll left
+            850,  // Enemy Sprites
+            950,  // Scroll up
+            1140, // Scroll right
+            1360, // Scroll down
+        ],
+    );
+}
+
+#[test]
 pub fn test_ice_climber() {
     // Tests vertical scrolling.
     test_playback("ice_climber", &[100, 1450, 1550, 1650]);
