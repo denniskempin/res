@@ -4,22 +4,25 @@ use bincode::Encode;
 use super::CartridgeError;
 use super::CartridgeResult;
 use super::Mapper;
+use super::MirroringMode;
 
 #[derive(Encode, Decode, Clone)]
 pub struct NromMapper {
     pub prg: Vec<u8>,
     pub chr: Vec<u8>,
     pub ram: Vec<u8>,
+    pub mirroring_mode: MirroringMode,
 }
 
 impl NromMapper {
     const RAM_SIZE: usize = 8 * 1024;
 
-    pub fn new(prg: &[u8], chr: &[u8]) -> NromMapper {
+    pub fn new(prg: &[u8], chr: &[u8], mirroring_mode: MirroringMode) -> NromMapper {
         let mut m = NromMapper {
             prg: prg.to_vec(),
             chr: chr.to_vec(),
             ram: vec![0; NromMapper::RAM_SIZE],
+            mirroring_mode,
         };
         m.chr.resize(8 * 1024, 0);
         m
@@ -28,7 +31,7 @@ impl NromMapper {
 
 impl Default for NromMapper {
     fn default() -> Self {
-        Self::new(&[], &[])
+        Self::new(&[], &[], MirroringMode::Horizontal)
     }
 }
 
@@ -78,5 +81,9 @@ impl Mapper for NromMapper {
     fn ppu_bus_write(&mut self, _addr: u16, _value: u8) -> CartridgeResult<()> {
         // Some games will try to write to character ROM and expect it to NOOP.
         Ok(())
+    }
+
+    fn get_mirroring_mode(&self) -> MirroringMode {
+        self.mirroring_mode
     }
 }

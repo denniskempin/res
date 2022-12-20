@@ -30,6 +30,8 @@ impl std::fmt::Debug for CartridgeError {
 pub type CartridgeResult<T> = std::result::Result<T, CartridgeError>;
 
 trait Mapper: Encode + Decode + Clone + Default {
+    fn get_mirroring_mode(&self) -> MirroringMode;
+
     fn cpu_bus_peek(&self, addr: u16) -> Option<u8>;
     fn cpu_bus_read(&mut self, addr: u16) -> CartridgeResult<u8>;
     fn cpu_bus_write(&mut self, addr: u16, value: u8) -> CartridgeResult<()>;
@@ -39,11 +41,14 @@ trait Mapper: Encode + Decode + Clone + Default {
     fn ppu_bus_write(&mut self, addr: u16, value: u8) -> CartridgeResult<()>;
 }
 
-#[derive(Default, Encode, Decode, Clone)]
+#[derive(Default, Encode, Decode, Clone, Copy)]
 pub enum MirroringMode {
     #[default]
     Horizontal,
     Vertical,
+    FourScreen,
+    SingleLower,
+    SingleUpper,
 }
 
 #[derive(PackedStruct, Default, Debug, Copy, Clone)]
@@ -93,8 +98,8 @@ impl Cartridge {
         }
     }
 
-    pub fn load_data(&mut self, prg: &[u8], chr: &[u8]) {
-        self.mapper = MapperEnum::NromMapper(NromMapper::new(prg, chr));
+    pub fn load_nrom_with_data(&mut self, prg: &[u8], chr: &[u8]) {
+        self.mapper = MapperEnum::NromMapper(NromMapper::new(prg, chr, MirroringMode::Horizontal));
     }
 
     pub fn load_ines(&mut self, raw: &[u8]) -> Result<()> {
@@ -123,11 +128,20 @@ impl Cartridge {
             ));
         }
 
+        let mirroring_mode = if header.four_screen {
+            MirroringMode::FourScreen
+        } else if header.mirroring {
+            MirroringMode::Vertical
+        } else {
+            MirroringMode::Horizontal
+        };
+
         match mapper_id {
             0 => {
                 self.mapper = MapperEnum::NromMapper(NromMapper::new(
                     &raw[prg_start..prg_end],
                     &raw[prg_end..chr_end],
+                    mirroring_mode,
                 ))
             }
             1 => {
@@ -139,6 +153,13 @@ impl Cartridge {
             _ => return Err(anyhow!("Unsupported mapper {mapper_id}")),
         };
         Ok(())
+    }
+
+    pub fn get_mirroring_mode(&self) -> MirroringMode {
+        match &self.mapper {
+            MapperEnum::NromMapper(mapper) => mapper.get_mirroring_mode(),
+            MapperEnum::Mmc1Mapper(mapper) => mapper.get_mirroring_mode(),
+        }
     }
 
     pub fn cpu_bus_peek(&self, addr: u16) -> Option<u8> {

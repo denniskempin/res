@@ -138,7 +138,7 @@ impl System {
             .bus
             .cartridge
             .borrow_mut()
-            .load_data(program, &[]);
+            .load_nrom_with_data(program, &[]);
         system.reset()?;
         system.cpu.boot()?;
         Ok(system)

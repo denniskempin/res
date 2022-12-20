@@ -15,6 +15,7 @@ use thiserror::Error;
 
 use super::cartridge::Cartridge;
 use super::cartridge::CartridgeError;
+use super::cartridge::MirroringMode;
 
 #[derive(Error)]
 pub enum PpuError {
@@ -316,8 +317,42 @@ impl Ppu {
     ////////////////////////////////////////////////////////////////////////////////
     // PPU Bus
 
-    pub fn vram_addr_to_idx(&self, addr: u16) -> usize {
-        addr as usize - 0x2000
+    pub fn map_vram_addr_to_index(&self, addr: u16) -> u16 {
+        let addr = if addr >= 0x3000 { addr - 0x1000 } else { addr };
+        match self.cartridge.borrow().get_mirroring_mode() {
+            MirroringMode::Horizontal => match addr {
+                0x2000..=0x23FF => addr - 0x2000,
+                0x2400..=0x27FF => addr - 0x2400,
+                0x2800..=0x2BFF => addr - 0x2800 + 0x0400,
+                0x2C00..=0x2FFF => addr - 0x2C00 + 0x0400,
+                _ => panic!("Invalid vram addr: {addr:04X}"),
+            },
+            MirroringMode::Vertical => match addr {
+                0x2000..=0x23FF => addr - 0x2000,
+                0x2400..=0x27FF => addr - 0x2400 + 0x0400,
+                0x2800..=0x2BFF => addr - 0x2800,
+                0x2C00..=0x2FFF => addr - 0x2C00 + 0x0400,
+                _ => panic!("Invalid vram addr: {addr:04X}"),
+            },
+            MirroringMode::FourScreen => match addr {
+                0x2000..=0x2FFF => addr - 0x2000,
+                _ => panic!("Invalid vram addr: {addr:04X}"),
+            },
+            MirroringMode::SingleLower => match addr {
+                0x2000..=0x23FF => addr - 0x2000,
+                0x2400..=0x27FF => addr - 0x2400,
+                0x2800..=0x2BFF => addr - 0x2800,
+                0x2C00..=0x2FFF => addr - 0x2C00,
+                _ => panic!("Invalid vram addr: {addr:04X}"),
+            },
+            MirroringMode::SingleUpper => match addr {
+                0x2000..=0x23FF => addr - 0x2000 + 0x0400,
+                0x2400..=0x27FF => addr - 0x2400 + 0x0400,
+                0x2800..=0x2BFF => addr - 0x2800 + 0x0400,
+                0x2C00..=0x2FFF => addr - 0x2C00 + 0x0400,
+                _ => panic!("Invalid vram addr: {addr:04X}"),
+            },
+        }
     }
 
     pub fn peek_slice(&self, addr: u16, length: u16) -> impl Iterator<Item = Option<u8>> + '_ {
@@ -327,7 +362,7 @@ impl Ppu {
     pub fn peek_ppu_memory(&self, addr: u16) -> Option<u8> {
         match addr {
             0..=0x1FFF => self.cartridge.borrow_mut().ppu_bus_peek(addr),
-            0x2000..=0x3EFF => Some(self.vram[self.vram_addr_to_idx(addr)]),
+            0x2000..=0x3EFF => Some(self.vram[self.map_vram_addr_to_index(addr) as usize]),
             0x3F00..=0xFFFF => Some(self.palette_table[(addr as usize - 0x3F00) % 0x20]),
         }
     }
@@ -349,7 +384,7 @@ impl Ppu {
                 Ok(())
             }
             0x2000..=0x3EFF => {
-                self.vram[self.vram_addr_to_idx(addr)] = value;
+                self.vram[self.map_vram_addr_to_index(addr) as usize] = value;
                 Ok(())
             }
             0x3F00..=0xFFFF => {
@@ -1022,7 +1057,7 @@ mod tests {
         let mut chr = vec![0; 0x2000];
         chr[0x1000] = 0x12;
         chr[0x1001] = 0x34;
-        ppu.cartridge.borrow_mut().load_data(&[], &chr);
+        ppu.cartridge.borrow_mut().load_nrom_with_data(&[], &chr);
 
         ppu.cpu_bus_write(ADDRESS_REGISTER_ADDR, 0x10).unwrap();
         ppu.cpu_bus_write(ADDRESS_REGISTER_ADDR, 0x00).unwrap();

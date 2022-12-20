@@ -154,6 +154,16 @@ impl Mapper for Mmc1Mapper {
             _ => Ok(()),
         }
     }
+
+    fn get_mirroring_mode(&self) -> super::MirroringMode {
+        match self.control_register.bits(0..=1) {
+            0 => super::MirroringMode::SingleLower,
+            1 => super::MirroringMode::SingleUpper,
+            2 => super::MirroringMode::Vertical,
+            3 => super::MirroringMode::Horizontal,
+            _ => panic!("Invalid MMC1 mirroring bits"),
+        }
+    }
 }
 
 #[cfg(test)]
