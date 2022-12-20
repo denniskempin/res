@@ -327,8 +327,8 @@ impl Ppu {
     pub fn peek_ppu_memory(&self, addr: u16) -> Option<u8> {
         match addr {
             0..=0x1FFF => self.cartridge.borrow_mut().ppu_bus_peek(addr),
-            0x2000..=0x3FFF => Some(self.vram[self.vram_addr_to_idx(addr)]),
-            _ => None,
+            0x2000..=0x3EFF => Some(self.vram[self.vram_addr_to_idx(addr)]),
+            0x3F00..=0xFFFF => Some(self.palette_table[(addr as usize - 0x3F00) % 0x20]),
         }
     }
 
@@ -348,11 +348,14 @@ impl Ppu {
                 self.cartridge.borrow_mut().ppu_bus_write(addr, value)?;
                 Ok(())
             }
-            0x2000..=0x3FFF => {
+            0x2000..=0x3EFF => {
                 self.vram[self.vram_addr_to_idx(addr)] = value;
                 Ok(())
             }
-            _ => Err(PpuError::InvalidBusWrite(addr)),
+            0x3F00..=0xFFFF => {
+                self.palette_table[(addr as usize - 0x3F00) % 0x20] = value;
+                Ok(())
+            }
         }
     }
 
