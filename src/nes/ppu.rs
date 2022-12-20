@@ -219,8 +219,8 @@ impl Ppu {
         (0..64)
             .filter_map(move |i| {
                 let sprite = Sprite::new(self, i);
-                let delta_y = scanline as i32 - sprite.data.y as i32;
-                if (0..8).contains(&delta_y) {
+                let delta_y = (scanline as i32 - sprite.data.y as i32) as usize;
+                if (0..self.get_sprite_height()).contains(&delta_y) {
                     Some(sprite)
                 } else {
                     None
@@ -302,6 +302,14 @@ impl Ppu {
         } else {
             let addr = 0x3F00 + (palette_id as u16 * 4) + entry as u16;
             self.read_ppu_memory(addr)
+        }
+    }
+
+    pub fn get_sprite_height(&self) -> usize {
+        if self.control_register.large_sprite_mode {
+            16
+        } else {
+            8
         }
     }
 
@@ -654,7 +662,6 @@ impl NametableEntry {
 pub struct Sprite {
     id: usize,
     data: OamEntry,
-    pattern: Pattern,
 }
 
 impl Sprite {
@@ -662,18 +669,32 @@ impl Sprite {
         let sprite_addr = id * 4;
         let data =
             OamEntry::unpack_from_slice(&ppu.oam_data[sprite_addr..sprite_addr + 4]).unwrap();
-        Sprite {
-            id,
-            data,
-            pattern: Pattern::new(ppu.control_register.sprite_pattern_addr as u8, data.index),
-        }
+        Sprite { id, data }
     }
 
     pub fn row_pixels(&self, ppu: &Ppu, mut y: usize) -> PpuResult<impl Iterator<Item = u8>> {
         if self.data.attr.flip_v {
-            y = 7 - y;
+            y = (ppu.get_sprite_height() - 1) - y;
         }
-        let mut row: Vec<u8> = self.pattern.row_pixels(ppu, y)?.collect();
+
+        let bank_id = if ppu.control_register.large_sprite_mode {
+            self.data.index.bit(0) as u8
+        } else {
+            ppu.control_register.sprite_pattern_addr as u8
+        };
+        let index = if ppu.control_register.large_sprite_mode {
+            let upper_half = self.data.index.bits(1..) as u8 * 2;
+            if y < 8 {
+                upper_half
+            } else {
+                upper_half + 1
+            }
+        } else {
+            self.data.index
+        };
+
+        let pattern = Pattern::new(bank_id, index);
+        let mut row: Vec<u8> = pattern.row_pixels(ppu, y % 8)?.collect();
         if self.data.attr.flip_h {
             row.reverse();
         }
@@ -830,12 +851,31 @@ impl VramAddress {
 pub struct ControlRegister {
     pub generate_nmi: bool,
     pub master_slave_select: bool,
-    pub sprite_size: bool,
+    pub large_sprite_mode: bool,
     pub background_pattern_addr: bool,
     pub sprite_pattern_addr: bool,
     pub vram_add_increment: bool,
     #[packed_field(bits = "6..=7")]
     pub nametable: u8,
+}
+
+impl ControlRegister {
+    pub fn pretty_print(&self) -> String {
+        let mut chars: Vec<&str> = Vec::new();
+        chars.push(if self.generate_nmi { "N" } else { "." });
+        chars.push(if self.master_slave_select { "M" } else { "S" });
+        chars.push(if self.large_sprite_mode { "L" } else { "." });
+        chars.push(if self.background_pattern_addr {
+            "B0"
+        } else {
+            "B1"
+        });
+        chars.push(if self.sprite_pattern_addr { "S0" } else { "S1" });
+        chars.push(if self.vram_add_increment { "V" } else { "." });
+        chars.push(if self.nametable.bit(1) { "1" } else { "0" });
+        chars.push(if self.nametable.bit(2) { "1" } else { "0" });
+        chars.iter().join("")
+    }
 }
 
 #[derive(PackedStruct, Encode, Decode, Clone, Debug, Default, Copy, PartialEq, Eq)]
