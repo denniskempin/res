@@ -3,8 +3,8 @@ mod debugger_ui;
 
 use std::ffi::OsStr;
 use std::fs;
-use std::fs::File;
-use std::io::Read;
+use std::path::Path;
+use std::path::PathBuf;
 
 use eframe::CreationContext;
 use eframe::Frame;
@@ -56,9 +56,57 @@ const GAMES: &[(&str, &[u8])] = &[
     ),
 ];
 
+pub struct Rom {
+    ines_data: Vec<u8>,
+    persistent_data: Option<Vec<u8>>,
+    persist_file_path: PathBuf,
+}
+
+impl Rom {
+    pub fn load_from_file(path: &Path) -> Rom {
+        let ines_data = fs::read(path).unwrap();
+        let persist_file_path = path.with_extension("nes.persist");
+        let persist_file = fs::read(&persist_file_path);
+        let persistent_data = match persist_file {
+            Ok(data) => Some(data),
+            Err(_) => None,
+        };
+        Rom {
+            ines_data,
+            persistent_data,
+            persist_file_path,
+        }
+    }
+
+    pub fn load_from_bytes(name: &str, ines_data: &[u8]) -> Rom {
+        let persist_file_path = PathBuf::from(name).with_extension("nes.persist");
+        let persistent_data = if cfg!(target_arch = "wasm32") {
+            None
+        } else {
+            match fs::read(&persist_file_path) {
+                Ok(data) => Some(data),
+                Err(_) => None,
+            }
+        };
+        Rom {
+            ines_data: ines_data.to_owned(),
+            persistent_data,
+            persist_file_path,
+        }
+    }
+
+    pub fn save_persistent_data(&self, persistent_data: Vec<u8>) {
+        if cfg!(target_arch = "wasm32") {
+            // TODO: Implement persistent storage for wasm32
+        } else {
+            fs::write(&self.persist_file_path, &persistent_data).unwrap();
+        }
+    }
+}
+
 pub struct EmulatorApp {
     emulator: System,
-    loaded: bool,
+    loaded_rom: Option<Rom>,
     framebuffer_texture: TextureHandle,
     debug_mode: bool,
     debug_state: Debugger,
@@ -67,16 +115,11 @@ pub struct EmulatorApp {
 
 impl EmulatorApp {
     /// Called once before the first frame.
-    pub fn new(cc: &CreationContext<'_>, rom: Option<Vec<u8>>) -> Self {
+    pub fn new(cc: &CreationContext<'_>, rom: Option<Rom>) -> Self {
         cc.egui_ctx.set_visuals(egui::Visuals::dark());
-        let loaded = rom.is_some();
-        EmulatorApp {
-            emulator: if let Some(rom) = rom {
-                System::with_ines_bytes(&rom).unwrap()
-            } else {
-                System::new()
-            },
-            loaded,
+        let mut app = EmulatorApp {
+            emulator: System::new(),
+            loaded_rom: None,
             framebuffer_texture: cc.egui_ctx.load_texture(
                 "Framebuffer",
                 ColorImage::example(),
@@ -85,12 +128,18 @@ impl EmulatorApp {
             debug_mode: true,
             debug_state: Debugger::new(cc),
             audio_engine: AudioEngine::new(),
+        };
+
+        if let Some(rom) = rom {
+            app.load_rom(rom);
         }
+        app
     }
 
-    fn load_rom(&mut self, data: &[u8]) {
-        self.emulator = System::with_ines_bytes(data).unwrap();
-        self.loaded = true;
+    fn load_rom(&mut self, rom: Rom) {
+        self.emulator =
+            System::with_ines_bytes(&rom.ines_data, rom.persistent_data.as_deref()).unwrap();
+        self.loaded_rom = Some(rom);
     }
 
     fn load_dropped_file(&mut self, drop: &DroppedFile) {
@@ -102,9 +151,7 @@ impl EmulatorApp {
                     self.emulator.playback_from = Some(record);
                 }
                 Some("nes") => {
-                    let mut data: Vec<u8> = Vec::new();
-                    File::open(path).unwrap().read_to_end(&mut data).unwrap();
-                    self.load_rom(&data);
+                    self.load_rom(Rom::load_from_file(path));
                 }
                 _ => {
                     panic!("Unknown file type");
@@ -113,7 +160,7 @@ impl EmulatorApp {
         } else if let Some(bytes) = &drop.bytes {
             #[cfg(target_arch = "wasm32")]
             crate::wasm::save_rom_in_local_storage(bytes);
-            self.load_rom(bytes);
+            self.load_rom(Rom::load_from_bytes(&drop.name, bytes));
         }
     }
 
@@ -155,14 +202,14 @@ impl EmulatorApp {
                 ui.menu_button("Programs", |ui| {
                     for program in PROGRAMS {
                         if ui.button(program.0).clicked() {
-                            self.load_rom(program.1);
+                            self.load_rom(Rom::load_from_bytes(program.0, program.1));
                         }
                     }
                 });
                 ui.menu_button("Games", |ui| {
                     for program in GAMES {
                         if ui.button(program.0).clicked() {
-                            self.load_rom(program.1);
+                            self.load_rom(Rom::load_from_bytes(program.0, program.1));
                         }
                     }
                 });
@@ -204,6 +251,19 @@ impl EmulatorApp {
         );
         image.paint_at(ui, whole_rect);
     }
+
+    fn save_persistent_data(&self) {
+        if let Some(rom) = &self.loaded_rom {
+            let cartridge = self.emulator.cartridge().borrow();
+            if !cartridge.has_persistent_data {
+                return;
+            }
+
+            if self.emulator.ppu().frame % 600 == 0 {
+                rom.save_persistent_data(self.emulator.cartridge().borrow().persistent_data())
+            }
+        }
+    }
 }
 
 impl eframe::App for EmulatorApp {
@@ -212,15 +272,17 @@ impl eframe::App for EmulatorApp {
         if !ctx.input().raw.dropped_files.is_empty() {
             self.load_dropped_file(&ctx.input().raw.dropped_files[0]);
         }
-        self.update_keys(&ctx.input());
 
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
             self.menu_bar(ui);
         });
 
-        if !self.loaded {
+        if self.loaded_rom.is_none() {
             return;
         }
+
+        self.save_persistent_data();
+        self.update_keys(&ctx.input());
 
         if !self.debug_mode {
             self.emulator.execute_one_frame().unwrap();

@@ -146,17 +146,17 @@ impl System {
 
     pub fn with_ines(path: &Path) -> Result<System> {
         let ines_file = fs::read(path).unwrap();
-        System::with_ines_bytes(&ines_file)
+        System::with_ines_bytes(&ines_file, None)
     }
 
-    pub fn with_ines_bytes(bytes: &[u8]) -> Result<System> {
+    pub fn with_ines_bytes(bytes: &[u8], persistent_data: Option<&[u8]>) -> Result<System> {
         let mut system = System::new();
         system
             .cpu
             .bus
             .cartridge
             .borrow_mut()
-            .load_ines(bytes)
+            .load_ines(bytes, persistent_data)
             .unwrap();
         system.reset()?;
         system.cpu.boot()?;

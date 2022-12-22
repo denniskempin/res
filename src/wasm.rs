@@ -6,6 +6,7 @@ use eframe::wasm_bindgen::prelude::*;
 use web_sys;
 
 use crate::app::EmulatorApp;
+use crate::app::Rom;
 
 pub fn save_rom_in_local_storage(rom: &[u8]) {
     let storage = web_sys::window().unwrap().local_storage().unwrap().unwrap();
@@ -28,7 +29,8 @@ pub fn start_app(canvas_id: &str) {
             Box::new(|cc| {
                 let storage = web_sys::window().unwrap().local_storage().unwrap().unwrap();
                 let initial_rom = storage.get_item("rom").unwrap();
-                let initial_rom = initial_rom.map(|raw| base64::decode(raw).unwrap());
+                let initial_rom = initial_rom
+                    .map(|raw| Rom::load_from_bytes("last_rom", &base64::decode(raw).unwrap()));
                 Box::new(EmulatorApp::new(cc, initial_rom))
             }),
         )

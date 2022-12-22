@@ -1,11 +1,11 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use std::fs::File;
-use std::io::Read;
+use std::path::PathBuf;
 
 use argh::FromArgs;
 use egui::vec2;
 use res::app::EmulatorApp;
+use res::app::Rom;
 
 /// Rust Entertainment System
 #[derive(FromArgs)]
@@ -28,9 +28,8 @@ fn main() {
     };
 
     let rom = args.rom.map(|path| {
-        let mut data: Vec<u8> = Vec::new();
-        File::open(path).unwrap().read_to_end(&mut data).unwrap();
-        data
+        let path = PathBuf::from(path);
+        Rom::load_from_file(&path)
     });
 
     eframe::run_native(

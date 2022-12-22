@@ -17,11 +17,18 @@ pub struct NromMapper {
 impl NromMapper {
     const RAM_SIZE: usize = 8 * 1024;
 
-    pub fn new(prg: &[u8], chr: &[u8], mirroring_mode: MirroringMode) -> NromMapper {
+    pub fn new(
+        prg: &[u8],
+        chr: &[u8],
+        mirroring_mode: MirroringMode,
+        persistent_data: Option<&[u8]>,
+    ) -> NromMapper {
         let mut m = NromMapper {
             prg: prg.to_vec(),
             chr: chr.to_vec(),
-            ram: vec![0; NromMapper::RAM_SIZE],
+            ram: persistent_data
+                .unwrap_or(&[0; NromMapper::RAM_SIZE])
+                .to_vec(),
             mirroring_mode,
         };
         m.chr.resize(8 * 1024, 0);
@@ -31,7 +38,7 @@ impl NromMapper {
 
 impl Default for NromMapper {
     fn default() -> Self {
-        Self::new(&[], &[], MirroringMode::Horizontal)
+        Self::new(&[], &[], MirroringMode::Horizontal, None)
     }
 }
 
@@ -85,5 +92,9 @@ impl Mapper for NromMapper {
 
     fn get_mirroring_mode(&self) -> MirroringMode {
         self.mirroring_mode
+    }
+
+    fn persistent_data(&self) -> Vec<u8> {
+        self.ram.clone()
     }
 }

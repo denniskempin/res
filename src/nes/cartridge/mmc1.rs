@@ -23,7 +23,7 @@ pub struct Mmc1Mapper {
 impl Mmc1Mapper {
     const RAM_SIZE: usize = 8 * 1024;
 
-    pub fn new(prg: &[u8], chr: &[u8]) -> Mmc1Mapper {
+    pub fn new(prg: &[u8], chr: &[u8], persistent_data: Option<&[u8]>) -> Mmc1Mapper {
         Mmc1Mapper {
             prg: prg.to_vec(),
             chr: if chr.is_empty() {
@@ -31,7 +31,9 @@ impl Mmc1Mapper {
             } else {
                 chr.to_vec()
             },
-            ram: vec![0; Mmc1Mapper::RAM_SIZE],
+            ram: persistent_data
+                .unwrap_or(&[0; Mmc1Mapper::RAM_SIZE])
+                .to_vec(),
             shift_register: 0b100000,
             control_register: 0,
             chr_bank0_register: 0,
@@ -101,7 +103,7 @@ impl Mmc1Mapper {
 
 impl Default for Mmc1Mapper {
     fn default() -> Self {
-        Self::new(&[], &[])
+        Self::new(&[], &[], None)
     }
 }
 
@@ -164,6 +166,10 @@ impl Mapper for Mmc1Mapper {
             _ => panic!("Invalid MMC1 mirroring bits"),
         }
     }
+
+    fn persistent_data(&self) -> Vec<u8> {
+        self.ram.clone()
+    }
 }
 
 #[cfg(test)]
@@ -180,7 +186,7 @@ mod tests {
         prg[PRG_BANK_SIZE] = 0x02;
         prg[2 * PRG_BANK_SIZE] = 0x03;
         prg[3 * PRG_BANK_SIZE] = 0x04;
-        Mmc1Mapper::new(prg.as_slice(), &[])
+        Mmc1Mapper::new(prg.as_slice(), &[], None)
     }
 
     fn serial_write_u5(mapper: &mut Mmc1Mapper, addr: u16, value: u8) {

@@ -31,6 +31,7 @@ pub type CartridgeResult<T> = std::result::Result<T, CartridgeError>;
 
 trait Mapper: Encode + Decode + Clone + Default {
     fn get_mirroring_mode(&self) -> MirroringMode;
+    fn persistent_data(&self) -> Vec<u8>;
 
     fn cpu_bus_peek(&self, addr: u16) -> Option<u8>;
     fn cpu_bus_read(&mut self, addr: u16) -> CartridgeResult<u8>;
@@ -86,7 +87,7 @@ enum MapperEnum {
 #[derive(Encode, Decode, Clone)]
 pub struct Cartridge {
     mapper: MapperEnum,
-    pub mirroring_mode: MirroringMode,
+    pub has_persistent_data: bool,
 }
 
 impl Cartridge {
@@ -94,15 +95,16 @@ impl Cartridge {
     pub fn new() -> Self {
         Self {
             mapper: MapperEnum::NromMapper(NromMapper::default()),
-            mirroring_mode: MirroringMode::Horizontal,
+            has_persistent_data: false,
         }
     }
 
     pub fn load_nrom_with_data(&mut self, prg: &[u8], chr: &[u8]) {
-        self.mapper = MapperEnum::NromMapper(NromMapper::new(prg, chr, MirroringMode::Horizontal));
+        self.mapper =
+            MapperEnum::NromMapper(NromMapper::new(prg, chr, MirroringMode::Horizontal, None));
     }
 
-    pub fn load_ines(&mut self, raw: &[u8]) -> Result<()> {
+    pub fn load_ines(&mut self, raw: &[u8], persistent_data: Option<&[u8]>) -> Result<()> {
         let header = InesHeader::unpack_from_slice(&raw[0..11])?;
         if header.magic != [78, 69, 83, 26] {
             return Err(anyhow!("Expected NES header."));
@@ -111,11 +113,6 @@ impl Cartridge {
         //println!("Loading iNES (mapper {:}): {:#?}", mapper_id, header);
         let prg_len = header.prg_size as usize * 16 * 1024;
         let chr_len = header.chr_size as usize * 8 * 1024;
-        self.mirroring_mode = if header.mirroring {
-            MirroringMode::Vertical
-        } else {
-            MirroringMode::Horizontal
-        };
         let prg_start = 16;
         let prg_end = prg_start + prg_len;
         let chr_end = prg_end + chr_len;
@@ -127,6 +124,8 @@ impl Cartridge {
                 raw.len()
             ));
         }
+
+        self.has_persistent_data = header.has_battery_ram;
 
         let mirroring_mode = if header.four_screen {
             MirroringMode::FourScreen
@@ -142,17 +141,26 @@ impl Cartridge {
                     &raw[prg_start..prg_end],
                     &raw[prg_end..chr_end],
                     mirroring_mode,
+                    persistent_data,
                 ))
             }
             1 => {
                 self.mapper = MapperEnum::Mmc1Mapper(Mmc1Mapper::new(
                     &raw[prg_start..prg_end],
                     &raw[prg_end..chr_end],
+                    persistent_data,
                 ))
             }
             _ => return Err(anyhow!("Unsupported mapper {mapper_id}")),
         };
         Ok(())
+    }
+
+    pub fn persistent_data(&self) -> Vec<u8> {
+        match &self.mapper {
+            MapperEnum::NromMapper(mapper) => mapper.persistent_data(),
+            MapperEnum::Mmc1Mapper(mapper) => mapper.persistent_data(),
+        }
     }
 
     pub fn get_mirroring_mode(&self) -> MirroringMode {
