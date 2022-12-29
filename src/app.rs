@@ -19,6 +19,9 @@ use egui::Layout;
 use egui::Sense;
 use egui::TextureHandle;
 use egui::Ui;
+use gilrs::Axis;
+use gilrs::Button;
+use gilrs::Gilrs;
 
 use self::audio::AudioEngine;
 use self::debugger_ui::Debugger;
@@ -111,6 +114,7 @@ pub struct EmulatorApp {
     debug_mode: bool,
     debug_state: Debugger,
     audio_engine: AudioEngine,
+    gilrs: Gilrs,
 }
 
 impl EmulatorApp {
@@ -128,6 +132,7 @@ impl EmulatorApp {
             debug_mode: true,
             debug_state: Debugger::new(cc),
             audio_engine: AudioEngine::new(),
+            gilrs: Gilrs::new().unwrap(),
         };
 
         if let Some(rom) = rom {
@@ -166,29 +171,33 @@ impl EmulatorApp {
 
     fn update_keys(&mut self, input: &InputState) {
         let mut joypad0 = [false; 8];
-        if input.key_down(Key::ArrowRight) {
-            joypad0[JoypadButton::Right as usize] = true;
-        }
-        if input.key_down(Key::ArrowLeft) {
-            joypad0[JoypadButton::Left as usize] = true;
-        }
-        if input.key_down(Key::ArrowDown) {
-            joypad0[JoypadButton::Down as usize] = true;
-        }
-        if input.key_down(Key::ArrowUp) {
-            joypad0[JoypadButton::Up as usize] = true;
-        }
-        if input.key_down(Key::S) {
-            joypad0[JoypadButton::Start as usize] = true;
-        }
-        if input.key_down(Key::A) {
-            joypad0[JoypadButton::Select as usize] = true;
-        }
-        if input.key_down(Key::Z) {
-            joypad0[JoypadButton::ButtonB as usize] = true;
-        }
-        if input.key_down(Key::X) {
-            joypad0[JoypadButton::ButtonA as usize] = true;
+        while self.gilrs.next_event().is_some() {}
+        if let Some((_, gamepad)) = self.gilrs.gamepads().next() {
+            joypad0[JoypadButton::Right as usize] = gamepad.is_pressed(Button::DPadRight)
+                || gamepad.value(Axis::DPadX) > 0.5
+                || gamepad.value(Axis::LeftStickX) > 0.5;
+            joypad0[JoypadButton::Left as usize] = gamepad.is_pressed(Button::DPadLeft)
+                || gamepad.value(Axis::DPadX) < -0.5
+                || gamepad.value(Axis::LeftStickX) < -0.5;
+            joypad0[JoypadButton::Down as usize] = gamepad.is_pressed(Button::DPadDown)
+                || gamepad.value(Axis::DPadY) < -0.5
+                || gamepad.value(Axis::LeftStickY) < -0.5;
+            joypad0[JoypadButton::Up as usize] = gamepad.is_pressed(Button::DPadUp)
+                || gamepad.value(Axis::DPadY) > 0.5
+                || gamepad.value(Axis::LeftStickY) > 0.5;
+            joypad0[JoypadButton::Start as usize] = gamepad.is_pressed(Button::Start);
+            joypad0[JoypadButton::Select as usize] = gamepad.is_pressed(Button::Select);
+            joypad0[JoypadButton::ButtonB as usize] = gamepad.is_pressed(Button::South);
+            joypad0[JoypadButton::ButtonA as usize] = gamepad.is_pressed(Button::East);
+        } else {
+            joypad0[JoypadButton::Right as usize] = input.key_down(Key::ArrowRight);
+            joypad0[JoypadButton::Left as usize] = input.key_down(Key::ArrowLeft);
+            joypad0[JoypadButton::Down as usize] = input.key_down(Key::ArrowDown);
+            joypad0[JoypadButton::Up as usize] = input.key_down(Key::ArrowUp);
+            joypad0[JoypadButton::Start as usize] = input.key_down(Key::S);
+            joypad0[JoypadButton::Select as usize] = input.key_down(Key::A);
+            joypad0[JoypadButton::ButtonB as usize] = input.key_down(Key::Z);
+            joypad0[JoypadButton::ButtonA as usize] = input.key_down(Key::X);
         }
         self.emulator.update_buttons(joypad0);
     }
