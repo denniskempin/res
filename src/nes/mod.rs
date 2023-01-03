@@ -38,6 +38,7 @@ pub struct System {
     pub cpu: Cpu,
     pub record_to: Option<Record>,
     pub playback_from: Option<Record>,
+    pub delta_t_accumulator: f64,
 }
 
 impl System {
@@ -47,6 +48,7 @@ impl System {
             cpu: Cpu::new(),
             record_to: None,
             playback_from: None,
+            delta_t_accumulator: 0.0,
         }
     }
     pub fn cpu(&self) -> &Cpu {
@@ -214,6 +216,14 @@ impl System {
             self.execute_one_frame()?;
         }
         Ok(())
+    }
+
+    pub fn execute_for_duration(&mut self, seconds: f64) -> Result<()> {
+        self.delta_t_accumulator += seconds;
+        const S_PER_FRAME: f64 = 0.016639260956557062;
+        let num_frames = (self.delta_t_accumulator / S_PER_FRAME).floor() as usize;
+        self.delta_t_accumulator -= num_frames as f64 * S_PER_FRAME;
+        self.execute_frames(num_frames)
     }
 
     pub fn reset(&mut self) -> Result<()> {

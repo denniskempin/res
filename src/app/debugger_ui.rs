@@ -104,7 +104,7 @@ impl MemoryViewer {
     }
 }
 
-pub struct Debugger {
+pub struct DebuggerUi {
     nametable_texture: TextureHandle,
     pattern_texture: TextureHandle,
 
@@ -116,9 +116,9 @@ pub struct Debugger {
     ppu_memory_viewer: MemoryViewer,
 }
 
-impl Debugger {
+impl DebuggerUi {
     pub fn new(cc: &CreationContext<'_>) -> Self {
-        Debugger {
+        DebuggerUi {
             nametable_texture: cc.egui_ctx.load_texture(
                 "Nametable",
                 ColorImage::example(),
@@ -137,13 +137,18 @@ impl Debugger {
         }
     }
 
-    fn run_command(&mut self, emulator: &mut System, command: DebugCommand) -> Result<()> {
+    fn run_command(
+        &mut self,
+        emulator: &mut System,
+        command: DebugCommand,
+        delta_t: f64,
+    ) -> Result<()> {
         match command {
             DebugCommand::Run => {
                 if emulator.ppu().frame % 60 == 0 {
                     self.previous_states.push(emulator.clone());
                 }
-                emulator.execute_one_frame()?;
+                emulator.execute_for_duration(delta_t)?;
             }
             DebugCommand::StepFrames(n) => {
                 emulator.execute_one_frame()?;
@@ -186,9 +191,9 @@ impl Debugger {
         Ok(())
     }
 
-    pub fn run_emulator(&mut self, emulator: &mut System) {
+    pub fn run_emulator(&mut self, emulator: &mut System, delta_t: f64) {
         if let Some(command) = self.command {
-            if let Err(error) = self.run_command(emulator, command) {
+            if let Err(error) = self.run_command(emulator, command, delta_t) {
                 self.alert.show(&error.to_string());
                 self.command = None;
             }

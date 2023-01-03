@@ -24,7 +24,7 @@ use gilrs::Button;
 use gilrs::Gilrs;
 
 use self::audio::AudioEngine;
-use self::debugger_ui::Debugger;
+use self::debugger_ui::DebuggerUi;
 use crate::nes::joypad::JoypadButton;
 use crate::nes::Record;
 use crate::nes::System;
@@ -112,7 +112,7 @@ pub struct EmulatorApp {
     loaded_rom: Option<Rom>,
     framebuffer_texture: TextureHandle,
     debug_mode: bool,
-    debug_state: Debugger,
+    debugger_ui: DebuggerUi,
     audio_engine: AudioEngine,
     gilrs: Gilrs,
 }
@@ -130,7 +130,7 @@ impl EmulatorApp {
                 Default::default(),
             ),
             debug_mode: true,
-            debug_state: Debugger::new(cc),
+            debugger_ui: DebuggerUi::new(cc),
             audio_engine: AudioEngine::new(),
             gilrs: Gilrs::new().unwrap(),
         };
@@ -294,15 +294,18 @@ impl eframe::App for EmulatorApp {
         self.update_keys(&ctx.input());
 
         if !self.debug_mode {
-            self.emulator.execute_one_frame().unwrap();
+            self.emulator
+                .execute_for_duration(ctx.input().unstable_dt as f64)
+                .unwrap();
         } else {
-            self.debug_state.run_emulator(&mut self.emulator);
+            self.debugger_ui
+                .run_emulator(&mut self.emulator, ctx.input().unstable_dt as f64);
 
             egui::SidePanel::right("right_debug_panel")
                 .resizable(false)
                 .show(ctx, |ui| {
                     ui.style_mut().override_font_id = Some(FontId::monospace(12.0));
-                    self.debug_state.right_debug_panel(ui, &self.emulator);
+                    self.debugger_ui.right_debug_panel(ui, &self.emulator);
                 });
 
             egui::TopBottomPanel::bottom("bottom_debug_panel")
@@ -310,7 +313,7 @@ impl eframe::App for EmulatorApp {
                 .height_range(250.0..=250.0)
                 .show(ctx, |ui| {
                     ui.style_mut().override_font_id = Some(FontId::monospace(12.0));
-                    self.debug_state.bottom_debug_panel(ui, &self.emulator);
+                    self.debugger_ui.bottom_debug_panel(ui, &self.emulator);
                 });
         }
 
