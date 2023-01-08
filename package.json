@@ -4,8 +4,9 @@
     "version": "0.1.0",
     "scripts": {
         "build": "rimraf dist && webpack --mode production --no-stats",
-        "build_dev": "rimraf dist && webpack --mode development",
-        "serve": "rimraf dist && webpack-dev-server --mode development"
+        "build-dev": "rimraf dist && webpack --mode development",
+        "serve": "rimraf dist && webpack-dev-server --mode development",
+        "serve-release": "rimraf dist && webpack-dev-server --mode development"
     },
     "devDependencies": {
         "@wasm-tool/wasm-pack-plugin": "^1.1.0",

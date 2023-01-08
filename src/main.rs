@@ -6,6 +6,8 @@ use argh::FromArgs;
 use egui::vec2;
 use res::app::EmulatorApp;
 use res::app::Rom;
+use tracing_chrome::ChromeLayerBuilder;
+use tracing_subscriber::prelude::*;
 
 /// Rust Entertainment System
 #[derive(FromArgs)]
@@ -13,13 +15,22 @@ struct ResArgs {
     /// rom file to load
     #[argh(positional)]
     rom: Option<String>,
+
+    /// enable generation of trace files
+    #[argh(option)]
+    trace_file: Option<PathBuf>,
 }
 
 fn main() {
     let args: ResArgs = argh::from_env();
 
-    // Log to stdout (if you run with `RUST_LOG=debug`).
-    tracing_subscriber::fmt::init();
+    let _tracing_guard = if let Some(trace_file) = args.trace_file {
+        let (chrome_layer, guard) = ChromeLayerBuilder::new().file(trace_file).build();
+        tracing_subscriber::registry().with(chrome_layer).init();
+        Some(guard)
+    } else {
+        None
+    };
 
     let native_options = eframe::NativeOptions {
         drag_and_drop_support: true,

@@ -14,6 +14,7 @@ use anyhow::anyhow;
 use anyhow::Result;
 use serde::Deserialize;
 use serde::Serialize;
+use tracing::instrument;
 
 use self::cartridge::Cartridge;
 use self::cpu::Cpu;
@@ -206,6 +207,7 @@ impl System {
         self.execute_until(|cpu| cpu.halt)
     }
 
+    #[instrument(skip_all)]
     pub fn execute_one_frame(&mut self) -> Result<()> {
         let current_frame = self.ppu().frame;
         self.execute_until(|cpu| cpu.bus.ppu.frame > current_frame)
@@ -218,6 +220,7 @@ impl System {
         Ok(())
     }
 
+    #[instrument(skip(self))]
     pub fn execute_for_duration(&mut self, seconds: f64) -> Result<()> {
         self.delta_t_accumulator += seconds;
         const S_PER_FRAME: f64 = 0.016639260956557062;

@@ -16,6 +16,7 @@ use egui::TextStyle;
 use egui::TextureHandle;
 use egui::Ui;
 use itertools::Itertools;
+use tracing::instrument;
 
 use crate::nes::cpu::Operation;
 use crate::nes::ppu::SYSTEM_PALETTE;
@@ -210,6 +211,7 @@ impl DebuggerUi {
         });
     }
 
+    #[instrument(skip_all)]
     pub fn right_debug_panel(&mut self, ui: &mut Ui, emulator: &System) {
         self.debug_controls(ui, emulator);
         ui.separator();
@@ -220,6 +222,7 @@ impl DebuggerUi {
         self.modals(ui, emulator);
     }
 
+    #[instrument(skip_all)]
     pub fn bottom_debug_panel(&mut self, ui: &mut Ui, emulator: &System) {
         ui.horizontal(|ui| {
             self.palette_table(ui, emulator);

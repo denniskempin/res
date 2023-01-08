@@ -36,12 +36,14 @@ serde_json = "1.0"
 fundsp = "0.10"
 cpal = { version = "0.14", features = ["wasm-bindgen"]}
 gilrs = "0.10"
+tracing = "0.1"
 
 [dev-dependencies]
 criterion = "0.4"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tracing-subscriber = "0.3"
+tracing-chrome = "0.7"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 console_error_panic_hook = "0.1"

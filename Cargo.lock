@@ -1640,6 +1640,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "json"
+version = "0.12.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "078e285eafdfb6c4b434e0d31e8cfcb5115b651496faca5749b88fafd4f23bfd"
+
+[[package]]
 name = "khronos_api"
 version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2512,6 +2518,8 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+ "tracing",
+ "tracing-chrome",
  "tracing-subscriber",
  "tracing-wasm",
  "wasm-bindgen-futures",
@@ -3159,6 +3167,18 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "tracing-chrome"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "865016457701971958e047b9f61add5bba70d7a7b084a13c9e54f9bb4f19d3a6"
+dependencies = [
+ "crossbeam-channel",
+ "json",
+ "tracing-core",
+ "tracing-subscriber",
 ]
 
 [[package]]

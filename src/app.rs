@@ -22,6 +22,7 @@ use egui::Ui;
 use gilrs::Axis;
 use gilrs::Button;
 use gilrs::Gilrs;
+use tracing::instrument;
 
 use self::audio::AudioEngine;
 use self::debugger_ui::DebuggerUi;
@@ -276,6 +277,7 @@ impl EmulatorApp {
 }
 
 impl eframe::App for EmulatorApp {
+    #[instrument(skip_all)]
     fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
         // Load new program if a file is dropped on the app
         if !ctx.input().raw.dropped_files.is_empty() {
