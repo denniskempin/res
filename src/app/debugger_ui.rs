@@ -142,14 +142,14 @@ impl DebuggerUi {
         &mut self,
         emulator: &mut System,
         command: DebugCommand,
-        delta_t: f64,
+        _delta_t: f64,
     ) -> Result<()> {
         match command {
             DebugCommand::Run => {
                 if emulator.ppu().frame % 60 == 0 {
                     self.previous_states.push(emulator.clone());
                 }
-                emulator.execute_for_duration(delta_t)?;
+                emulator.execute_frames(1).unwrap();
             }
             DebugCommand::StepFrames(n) => {
                 emulator.execute_one_frame()?;

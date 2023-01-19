@@ -96,6 +96,7 @@ impl ResCpuBus {
 
 impl CpuBus for ResCpuBus {
     fn advance_clock(&mut self, cpu_cycles: usize) -> Result<()> {
+        self.apu.advance_clock(cpu_cycles)?;
         self.ppu.advance_clock(cpu_cycles * 3)?;
         Ok(())
     }

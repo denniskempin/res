@@ -319,6 +319,9 @@ impl eframe::App for EmulatorApp {
                 });
         }
 
+        self.audio_engine
+            .append_samples(&mut self.emulator.audio_buffer);
+
         // Render emulator display
         egui::CentralPanel::default().show(ctx, |ui| {
             self.main_display(ui);

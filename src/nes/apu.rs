@@ -1,8 +1,27 @@
+use anyhow::Result;
+
 #[derive(Default, bincode::Encode, bincode::Decode, Clone)]
-pub struct Apu {}
+pub struct Apu {
+    cycle: u64,
+}
 
 impl Apu {
-    pub fn tick(&mut self, _clock: u64) {}
+    pub fn new() -> Apu {
+        Apu { cycle: 0 }
+    }
+
+    pub fn advance_clock(&mut self, cycles: usize) -> Result<()> {
+        self.cycle += cycles as u64;
+        Ok(())
+    }
+
+    pub fn sample(&self) -> f32 {
+        f32::sin((self.cycle as f32) * 0.001)
+    }
+
+    pub fn tick(&mut self) -> Result<()> {
+        Ok(())
+    }
 
     pub fn cpu_bus_peek(&self, _addr: u16) -> u8 {
         0
