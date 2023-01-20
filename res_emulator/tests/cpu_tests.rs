@@ -3,9 +3,9 @@ use std::io::BufRead;
 use std::io::{self};
 use std::path::Path;
 
-use res::nes::cpu::CpuBus;
-use res::nes::trace::Trace;
-use res::nes::System;
+use res_emulator::cpu::CpuBus;
+use res_emulator::trace::Trace;
+use res_emulator::System;
 
 #[test]
 pub fn test_basic_program() {

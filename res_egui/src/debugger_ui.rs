@@ -16,12 +16,11 @@ use egui::TextStyle;
 use egui::TextureHandle;
 use egui::Ui;
 use itertools::Itertools;
+use res_emulator::cpu::Operation;
+use res_emulator::ppu::SYSTEM_PALETTE;
+use res_emulator::util::RingBuffer;
+use res_emulator::System;
 use tracing::instrument;
-
-use crate::nes::cpu::Operation;
-use crate::nes::ppu::SYSTEM_PALETTE;
-use crate::nes::System;
-use crate::util::RingBuffer;
 
 #[derive(Default)]
 pub struct Alert {

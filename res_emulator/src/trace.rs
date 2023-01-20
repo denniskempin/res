@@ -102,7 +102,7 @@ impl Trace {
 #[cfg(test)]
 mod test {
     use super::Trace;
-    use crate::nes::cpu::StatusFlags;
+    use crate::cpu::StatusFlags;
 
     #[test]
     pub fn test_parse_fmt_trace() {

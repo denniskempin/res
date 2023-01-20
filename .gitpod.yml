@@ -1,4 +1,0 @@
-tasks:
-  - name: "Serve"
-    init: yarn install && yarn build_dev && cargo test --no-run && cargo clippy
-    command: yarn serve

@@ -1,5 +1,6 @@
 use anyhow::anyhow;
 use anyhow::Result;
+use lazy_static::lazy_static;
 
 use super::Cpu;
 use super::CpuBus;

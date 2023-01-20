@@ -1,55 +1,8 @@
-[package]
-name = "res"
-default-run = "res_bin"
-version = "0.1.0"
-authors = ["Dennis Kempin <dennis.kempin@gmail.com>"]
-edition = "2021"
-rust-version = "1.62"
-
-[[bin]]
-name = "res_bin"
-path = "src/main.rs"
-
-[lib]
-crate-type = ["cdylib", "rlib"]
-
-
-[dependencies]
-anyhow = "1.0"
-base64 = "0.20"
-bincode =  { version = "2.0.0-rc.2", features = ["derive"] }
-eframe = "0.20"
-egui = "0.20"
-getrandom = { version = "0.2", features = ["js"] }
-image = { version = "0.24", features = ["png"] }
-lazy_static = "1"
-packed_struct = "0.10"
-rand = { version = "0.8" }
-regex = "1.6"
-wasm-timer = "0.2"
-itertools = "0.10"
-intbits = "0.2"
-thiserror = "1.0"
-argh = "0.1"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-fundsp = "0.10"
-cpal = { version = "0.14", features = ["wasm-bindgen"]}
-gilrs = "0.10"
-tracing = "0.1"
-
-[dev-dependencies]
-criterion = "0.4"
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-tracing-subscriber = "0.3"
-tracing-chrome = "0.7"
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-console_error_panic_hook = "0.1"
-tracing-wasm = "0.2"
-web-sys = { version = "0.3", features = ["Storage"] }
-wasm-bindgen-futures = "0.4"
+[workspace]
+members = [
+    "res_emulator",
+    "res_egui",
+]
 
 # Opt-level impact on execution time of nestest.nes
 # 0 => 1182us
@@ -59,17 +12,3 @@ wasm-bindgen-futures = "0.4"
 # 3 + pgo => 124us
 [profile.dev]
 opt-level = 1
-
-[[bench]]
-name = "alter_ego"
-harness = false
-
-[[bench]]
-name = "nestest"
-harness = false
-
-[profile.release]
-lto = true
-
-[package.metadata.wasm-pack.profile.release]
-wasm-opt = ['-O4']

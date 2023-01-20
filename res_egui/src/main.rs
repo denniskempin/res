@@ -4,8 +4,8 @@ use std::path::PathBuf;
 
 use argh::FromArgs;
 use egui::vec2;
-use res::app::EmulatorApp;
-use res::app::Rom;
+use res_egui::EmulatorApp;
+use res_egui::Rom;
 use tracing_chrome::ChromeLayerBuilder;
 use tracing_subscriber::prelude::*;
 

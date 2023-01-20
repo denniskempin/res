@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use image::RgbaImage;
-use res::nes::System;
+use res_emulator::System;
 
 #[test]
 pub fn test_nestest() {

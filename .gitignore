@@ -1,8 +1,5 @@
 /target
-/node_modules
-/dist
 /roms/*.nes
 .DS_STORE
-yarn-error.log
 recording.json
-**/*.persist
+*.persist

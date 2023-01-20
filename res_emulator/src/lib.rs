@@ -5,6 +5,7 @@ pub mod debugger;
 pub mod joypad;
 pub mod ppu;
 pub mod trace;
+pub mod util;
 
 use std::cell::RefCell;
 use std::fs;

@@ -1,5 +1,6 @@
 mod audio;
 mod debugger_ui;
+mod wasm;
 
 use std::ffi::OsStr;
 use std::fs;
@@ -22,41 +23,41 @@ use egui::Ui;
 use gilrs::Axis;
 use gilrs::Button;
 use gilrs::Gilrs;
+use res_emulator::joypad::JoypadButton;
+use res_emulator::Record;
+use res_emulator::System;
 use tracing::instrument;
 
 use self::audio::AudioEngine;
 use self::debugger_ui::DebuggerUi;
-use crate::nes::joypad::JoypadButton;
-use crate::nes::Record;
-use crate::nes::System;
 
 const PROGRAMS: &[(&str, &[u8])] = &[
     (
         "nestest",
-        include_bytes!("../roms/programs/nestest.nes").as_slice(),
+        include_bytes!("../../roms/programs/nestest.nes").as_slice(),
     ),
     (
         "instr_test_v5",
-        include_bytes!("../roms/programs/instr_test_v5.nes").as_slice(),
+        include_bytes!("../../roms/programs/instr_test_v5.nes").as_slice(),
     ),
     (
         "scanline",
-        include_bytes!("../roms/programs/scanline.nes").as_slice(),
+        include_bytes!("../../roms/programs/scanline.nes").as_slice(),
     ),
 ];
 
 const GAMES: &[(&str, &[u8])] = &[
     (
         "Blaster",
-        include_bytes!("../roms/games/blaster.nes").as_slice(),
+        include_bytes!("../../roms/games/blaster.nes").as_slice(),
     ),
     (
         "Alter Ego",
-        include_bytes!("../roms/games/alter_ego.nes").as_slice(),
+        include_bytes!("../../roms/games/alter_ego.nes").as_slice(),
     ),
     (
         "Lan Master",
-        include_bytes!("../roms/games/lan_master.nes").as_slice(),
+        include_bytes!("../../roms/games/lan_master.nes").as_slice(),
     ),
 ];
 

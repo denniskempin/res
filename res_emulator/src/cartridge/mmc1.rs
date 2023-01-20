@@ -176,7 +176,7 @@ impl Mapper for Mmc1Mapper {
 mod tests {
     use super::Mmc1Mapper;
     use super::PRG_BANK_SIZE;
-    use crate::nes::cartridge::Mapper;
+    use crate::cartridge::Mapper;
 
     fn test_mapper() -> Mmc1Mapper {
         // Create a mapper with the bank number in the first byte of each bank to allow us to

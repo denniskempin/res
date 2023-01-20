@@ -5,8 +5,8 @@ use eframe::wasm_bindgen;
 use eframe::wasm_bindgen::prelude::*;
 use web_sys;
 
-use crate::app::EmulatorApp;
-use crate::app::Rom;
+use crate::EmulatorApp;
+use crate::Rom;
 
 pub fn save_rom_in_local_storage(rom: &[u8]) {
     let storage = web_sys::window().unwrap().local_storage().unwrap().unwrap();
