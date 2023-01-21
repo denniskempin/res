@@ -2,6 +2,7 @@
 members = [
     "res_emulator",
     "res_egui",
+    "res_libretro",
 ]
 
 # Opt-level impact on execution time of nestest.nes
