@@ -146,6 +146,7 @@ impl EmulatorApp {
     fn load_rom(&mut self, rom: Rom) {
         self.emulator =
             System::with_ines_bytes(&rom.ines_data, rom.persistent_data.as_deref()).unwrap();
+        self.emulator.cpu.bus.apu.audio_sample_rate = self.audio_engine.sample_rate;
         self.loaded_rom = Some(rom);
     }
 
@@ -295,11 +296,9 @@ impl eframe::App for EmulatorApp {
 
         self.save_persistent_data();
         self.update_keys(&ctx.input());
-
+        let cycles_before = self.emulator.cpu.cycle;
         if !self.debug_mode {
-            self.emulator
-                .execute_for_duration(ctx.input().unstable_dt as f64)
-                .unwrap();
+            self.emulator.execute_frames(1).unwrap();
         } else {
             self.debugger_ui
                 .run_emulator(&mut self.emulator, ctx.input().unstable_dt as f64);
@@ -316,12 +315,21 @@ impl eframe::App for EmulatorApp {
                 .height_range(250.0..=250.0)
                 .show(ctx, |ui| {
                     ui.style_mut().override_font_id = Some(FontId::monospace(12.0));
-                    self.debugger_ui.bottom_debug_panel(ui, &self.emulator);
+                    self.debugger_ui
+                        .bottom_debug_panel(ui, &self.emulator, &self.audio_engine);
                 });
         }
 
+        println!(
+            "{:?}, {:?}, {:?}, {:.2}",
+            ctx.input().unstable_dt,
+            self.emulator.cpu.cycle - cycles_before,
+            self.emulator.cpu.bus.apu.audio_buffer.len(),
+            self.emulator.cpu.bus.apu.audio_buffer.len() as f64 / ctx.input().unstable_dt as f64,
+        );
+
         self.audio_engine
-            .append_samples(&mut self.emulator.audio_buffer);
+            .append_samples(&mut self.emulator.cpu.bus.apu.audio_buffer);
 
         // Render emulator display
         egui::CentralPanel::default().show(ctx, |ui| {

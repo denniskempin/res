@@ -22,6 +22,8 @@ use res_emulator::util::RingBuffer;
 use res_emulator::System;
 use tracing::instrument;
 
+use crate::audio::AudioEngine;
+
 #[derive(Default)]
 pub struct Alert {
     text: String,
@@ -222,7 +224,7 @@ impl DebuggerUi {
     }
 
     #[instrument(skip_all)]
-    pub fn bottom_debug_panel(&mut self, ui: &mut Ui, emulator: &System) {
+    pub fn bottom_debug_panel(&mut self, ui: &mut Ui, emulator: &System, audio: &AudioEngine) {
         ui.horizontal(|ui| {
             self.palette_table(ui, emulator);
             ui.separator();
@@ -234,7 +236,7 @@ impl DebuggerUi {
                     .set(emulator.ppu().debug_render_nametable(), Default::default());
                 ui.image(&self.nametable_texture, vec2(400.0, 220.0));
             });
-            ui.vertical(|ui| {
+            /*ui.vertical(|ui| {
                 ui.label(RichText::new("Pattern Table").strong());
 
                 self.pattern_texture.set(
@@ -242,8 +244,9 @@ impl DebuggerUi {
                     Default::default(),
                 );
                 ui.image(&self.pattern_texture, vec2(400.0, 220.0));
-            });
+            });*/
 
+            self.apu_panel(ui, emulator, audio);
             self.ppu_panel(ui, emulator);
         });
     }
@@ -404,6 +407,16 @@ impl DebuggerUi {
             {
                 self.command = Some(DebugCommand::StepBack);
             }
+        });
+    }
+
+    fn apu_panel(&mut self, ui: &mut Ui, emulator: &System, audio: &AudioEngine) {
+        ui.vertical(|ui| {
+            ui.label(RichText::new("APU").strong());
+            ui.label(format!(
+                "Audio Engine Buffer: {:}",
+                audio.audio_buffer.lock().unwrap().len()
+            ));
         });
     }
 

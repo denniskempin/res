@@ -168,10 +168,6 @@ impl CpuBus for ResCpuBus {
             let value = self.read(start_addr + i as u16)?;
             self.ppu.oam_data[i as usize] = value;
         }
-        // Hack.. we should be advancing the CPU clock, but don't have access
-        // to it here. Instead just advance everything else on the bus.
-        // Ideally, the bus could tell the CPU how long a read/write took.
-        self.advance_clock(512)?;
         Ok(())
     }
 }
@@ -342,6 +338,10 @@ impl Cpu {
     }
 
     pub fn write(&mut self, addr: u16, value: u8) -> Result<()> {
+        // Hack: Advance clock when doing oam_dma access
+        if addr == 0x4014 {
+            self.advance_clock(512)?
+        }
         self.bus.write(addr, value)
     }
 

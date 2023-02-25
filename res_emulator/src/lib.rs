@@ -41,9 +41,6 @@ pub struct System {
     pub record_to: Option<Record>,
     pub playback_from: Option<Record>,
     pub delta_t_accumulator: f64,
-    pub audio_buffer: Vec<f32>,
-    pub audio_sample_rate: usize,
-    pub s_since_last_sample: f64,
 }
 
 impl System {
@@ -54,9 +51,6 @@ impl System {
             record_to: None,
             playback_from: None,
             delta_t_accumulator: 0.0,
-            audio_buffer: Vec::new(),
-            audio_sample_rate: 41_000,
-            s_since_last_sample: 0.0,
         }
     }
     pub fn cpu(&self) -> &Cpu {
@@ -186,24 +180,14 @@ impl System {
     where
         F: Fn(&Cpu) -> bool,
     {
-        const S_PER_CYCLE: f64 = 1.0 / (1.789773 * 1000.0 * 1000.0);
-        let s_per_sample: f64 = 1.0 / self.audio_sample_rate as f64;
-
         self.cpu.debugger.borrow_mut().start_execution();
         loop {
             if self.cpu.halt {
                 return Err(anyhow!("CPU halted"));
             }
 
-            let cycles_before = self.cpu.cycle;
             if let Err(e) = self.cpu.execute_one() {
                 return Err(anyhow!("Execution failed: {:?}", e));
-            }
-
-            self.s_since_last_sample += (self.cpu.cycle - cycles_before) as f64 * S_PER_CYCLE;
-            if self.s_since_last_sample > s_per_sample {
-                self.s_since_last_sample -= s_per_sample;
-                self.audio_buffer.push(self.cpu.bus.apu.sample());
             }
 
             if should_break(&self.cpu) {

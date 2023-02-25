@@ -9,7 +9,8 @@ use tracing::instrument;
 
 pub struct AudioEngine {
     output_stream: Stream,
-    audio_buffer: Arc<Mutex<Vec<f32>>>,
+    pub audio_buffer: Arc<Mutex<Vec<f32>>>,
+    pub sample_rate: usize,
 }
 
 #[instrument(skip_all)]
@@ -62,6 +63,8 @@ impl AudioEngine {
             .default_output_device()
             .expect("no output device available");
         let config = device.default_output_config().unwrap();
+        let sample_rate = config.sample_rate();
+        println!("config: {:?}", config);
         let audio_buffer = Arc::new(Mutex::new(Vec::<f32>::with_capacity(1024 * 1024)));
         let output_stream = match config.sample_format() {
             cpal::SampleFormat::F32 => {
@@ -78,6 +81,7 @@ impl AudioEngine {
         AudioEngine {
             output_stream,
             audio_buffer,
+            sample_rate: sample_rate.0 as usize,
         }
     }
 
