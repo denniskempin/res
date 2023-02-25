@@ -583,19 +583,28 @@ impl Default for Framebuffer {
 impl Framebuffer {
     pub const SIZE: [usize; 2] = [FRAME_WIDTH, FRAME_HEIGHT];
 
+    pub fn as_raw_bgra(&self) -> Vec<u8> {
+        self.pixels
+            .iter()
+            .flat_map(|c| {
+                let color32 = SYSTEM_PALETTE[*c as usize];
+                [color32.b(), color32.g(), color32.r(), color32.a()]
+            })
+            .collect()
+    }
+
+    pub fn as_raw_rgba(&self) -> Vec<u8> {
+        self.pixels
+            .iter()
+            .flat_map(|c| {
+                let color32 = SYSTEM_PALETTE[*c as usize];
+                [color32.r(), color32.g(), color32.b(), color32.a()]
+            })
+            .collect()
+    }
+
     pub fn as_rgba_image(&self) -> RgbaImage {
-        RgbaImage::from_vec(
-            FRAME_WIDTH as u32,
-            FRAME_HEIGHT as u32,
-            self.pixels
-                .iter()
-                .flat_map(|c| {
-                    let color32 = SYSTEM_PALETTE[*c as usize];
-                    [color32.r(), color32.g(), color32.b(), color32.a()]
-                })
-                .collect(),
-        )
-        .unwrap()
+        RgbaImage::from_vec(FRAME_WIDTH as u32, FRAME_HEIGHT as u32, self.as_raw_rgba()).unwrap()
     }
 
     pub fn as_color_image(&self) -> ColorImage {

@@ -55,7 +55,7 @@ impl System {
             playback_from: None,
             delta_t_accumulator: 0.0,
             audio_buffer: Vec::new(),
-            audio_sample_rate: 45_100,
+            audio_sample_rate: 41_000,
             s_since_last_sample: 0.0,
         }
     }

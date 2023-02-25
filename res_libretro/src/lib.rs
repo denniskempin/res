@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use libretro_rs::*;
 use res_emulator::joypad::JoypadButton;
 use res_emulator::ppu::Framebuffer;
@@ -6,20 +8,31 @@ use res_emulator::System;
 struct ResCore {
     pixels: Vec<u8>,
     emulator: Option<System>,
+    counter: f32,
+    audio_buffer: Vec<i16>,
+    last_frame_time: Instant,
 }
 
 libretro_core!(ResCore);
+
+const SAMPLE_RATE: f64 = 44_1000.0;
+const FRAME_RATE: f64 = 120.0;
+const SAMPLES_PER_FRAME: usize = (SAMPLE_RATE / FRAME_RATE) as usize + 1;
 
 impl RetroCore for ResCore {
     fn init(_env: &RetroEnvironment) -> Self {
         Self {
             pixels: vec![0; Framebuffer::SIZE[0] * Framebuffer::SIZE[1] * 4],
             emulator: None,
+            counter: 0.0,
+            audio_buffer: vec![0; SAMPLES_PER_FRAME * 2],
+            last_frame_time: Instant::now(),
         }
     }
 
     fn get_system_info() -> RetroSystemInfo {
         RetroSystemInfo::new("Rust Entertainment System", env!("CARGO_PKG_VERSION"))
+            .with_valid_extensions(&["nes", "srm"])
     }
 
     fn load_game(&mut self, _env: &RetroEnvironment, game: RetroGame) -> RetroLoadGameResult {
@@ -27,9 +40,9 @@ impl RetroCore for ResCore {
             self.emulator = Some(System::with_ines_bytes(data, None).unwrap());
         }
         RetroLoadGameResult::Success {
-            audio: RetroAudioInfo::new(44_1000.0),
+            audio: RetroAudioInfo::new(SAMPLE_RATE),
             video: RetroVideoInfo::new(
-                60.0,
+                FRAME_RATE,
                 Framebuffer::SIZE[0] as u32,
                 Framebuffer::SIZE[1] as u32,
             )
@@ -41,6 +54,8 @@ impl RetroCore for ResCore {
 
     fn run(&mut self, _env: &RetroEnvironment, runtime: &RetroRuntime) {
         if let Some(emulator) = self.emulator.as_mut() {
+            let emu_start_time = Instant::now();
+
             let mut joypad0 = [false; 8];
             joypad0[JoypadButton::Right as usize] =
                 runtime.is_joypad_button_pressed(0, RetroJoypadButton::Right);
@@ -61,14 +76,39 @@ impl RetroCore for ResCore {
 
             emulator.update_buttons(joypad0);
             emulator.execute_one_frame().unwrap();
-            self.pixels = emulator.ppu().framebuffer.as_rgba_image().into_raw();
-        }
+            // TODO: Verify if this should be rgba on little endian architectures.
+            self.pixels = emulator.ppu().framebuffer.as_raw_bgra();
 
-        runtime.upload_video_frame(
-            &self.pixels,
-            Framebuffer::SIZE[0] as u32,
-            Framebuffer::SIZE[1] as u32,
-            Framebuffer::SIZE[0] * 4,
-        );
+            for i in 0..SAMPLES_PER_FRAME {
+                let sample = (f32::sin(self.counter) * 4096.0) as i16;
+                self.audio_buffer[i * 2] = sample;
+                self.audio_buffer[i * 2 + 1] = sample;
+                self.counter += 0.01;
+            }
+
+            let audio_start_time = Instant::now();
+            runtime.upload_audio_frame(&self.audio_buffer);
+
+            let video_start_time = Instant::now();
+            runtime.upload_video_frame(
+                &self.pixels,
+                Framebuffer::SIZE[0] as u32,
+                Framebuffer::SIZE[1] as u32,
+                Framebuffer::SIZE[0] * 4,
+            );
+
+            let emu_time = audio_start_time - emu_start_time;
+            let audio_time = video_start_time - audio_start_time;
+            let video_time = Instant::now() - video_start_time;
+            let frame_delta = Instant::now() - self.last_frame_time;
+            self.last_frame_time = Instant::now();
+            println!(
+                "delta: {} (emu: {}, audio: {}, video: {})",
+                frame_delta.as_millis(),
+                emu_time.as_millis(),
+                audio_time.as_millis(),
+                video_time.as_millis(),
+            );
+        }
     }
 }

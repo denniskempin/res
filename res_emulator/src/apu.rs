@@ -16,7 +16,7 @@ impl Apu {
     }
 
     pub fn sample(&self) -> f32 {
-        f32::sin((self.cycle as f32) * 0.001)
+        f32::sin((self.cycle as f32) * 0.00001)
     }
 
     pub fn tick(&mut self) -> Result<()> {
