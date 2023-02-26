@@ -296,9 +296,12 @@ impl eframe::App for EmulatorApp {
 
         self.save_persistent_data();
         self.update_keys(&ctx.input());
+
         let cycles_before = self.emulator.cpu.cycle;
         if !self.debug_mode {
-            self.emulator.execute_frames(1).unwrap();
+            self.emulator
+                .execute_for_duration(ctx.input().stable_dt as f64)
+                .unwrap();
         } else {
             self.debugger_ui
                 .run_emulator(&mut self.emulator, ctx.input().unstable_dt as f64);
@@ -319,14 +322,6 @@ impl eframe::App for EmulatorApp {
                         .bottom_debug_panel(ui, &self.emulator, &self.audio_engine);
                 });
         }
-
-        println!(
-            "{:?}, {:?}, {:?}, {:.2}",
-            ctx.input().unstable_dt,
-            self.emulator.cpu.cycle - cycles_before,
-            self.emulator.cpu.bus.apu.audio_buffer.len(),
-            self.emulator.cpu.bus.apu.audio_buffer.len() as f64 / ctx.input().unstable_dt as f64,
-        );
 
         self.audio_engine
             .append_samples(&mut self.emulator.cpu.bus.apu.audio_buffer);

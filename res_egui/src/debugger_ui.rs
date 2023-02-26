@@ -143,14 +143,14 @@ impl DebuggerUi {
         &mut self,
         emulator: &mut System,
         command: DebugCommand,
-        _delta_t: f64,
+        delta_t: f64,
     ) -> Result<()> {
         match command {
             DebugCommand::Run => {
                 if emulator.ppu().frame % 60 == 0 {
                     self.previous_states.push(emulator.clone());
                 }
-                emulator.execute_frames(1).unwrap();
+                emulator.execute_for_duration(delta_t).unwrap();
             }
             DebugCommand::StepFrames(n) => {
                 emulator.execute_one_frame()?;
@@ -415,7 +415,7 @@ impl DebuggerUi {
             ui.label(RichText::new("APU").strong());
             ui.label(format!(
                 "Audio Engine Buffer: {:}",
-                audio.audio_buffer.lock().unwrap().len()
+                audio.audio_buffer.lock().unwrap().data.len()
             ));
         });
     }
