@@ -27,6 +27,7 @@ tracing = "0.1"
 
 [dev-dependencies]
 criterion = "0.4"
+wav = "1.0"
 
 [[bench]]
 name = "alter_ego"

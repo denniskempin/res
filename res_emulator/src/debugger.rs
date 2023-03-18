@@ -56,6 +56,7 @@ impl Display for BreakReason {
 #[derive(Default, Clone, Decode, Encode)]
 pub struct Debugger {
     pub breakpoints: Vec<Trigger>,
+    pub log_points: Vec<Trigger>,
     pub break_reason: Option<BreakReason>,
     pub last_ops: RingBuffer<u16, 1024>,
 }
@@ -79,7 +80,7 @@ impl Debugger {
         self.last_ops.push(op.addr);
     }
 
-    pub fn on_cpu_memory_access(&mut self, access: MemoryAccess) {
+    pub fn on_cpu_memory_access(&mut self, cycle: usize, access: MemoryAccess) {
         for trigger in self.breakpoints.iter() {
             match trigger {
                 Trigger::CpuMemoryRead(range) => {
@@ -94,6 +95,25 @@ impl Debugger {
                         if range.contains(&addr) {
                             println!("Write: 0x{:04X}", addr);
                             self.break_reason = Some(BreakReason::CpuMemoryWrite(addr));
+                        }
+                    }
+                }
+                _ => (),
+            }
+        }
+        for trigger in self.log_points.iter() {
+            match trigger {
+                Trigger::CpuMemoryRead(range) => {
+                    if let MemoryAccess::Read(addr) = access {
+                        if range.contains(&addr) {
+                            println!("Read ({cycle}, 0x{:04X})", addr);
+                        }
+                    }
+                }
+                Trigger::CpuMemoryWrite(range) => {
+                    if let MemoryAccess::Write(addr, value) = access {
+                        if range.contains(&addr) {
+                            println!("Write ({cycle}, 0x{addr:04X}, 0x{value:02X})");
                         }
                     }
                 }

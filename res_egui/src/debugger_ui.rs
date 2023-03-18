@@ -108,7 +108,7 @@ impl MemoryViewer {
 
 pub struct DebuggerUi {
     nametable_texture: TextureHandle,
-    pattern_texture: TextureHandle,
+    _pattern_texture: TextureHandle,
 
     command: Option<DebugCommand>,
     previous_states: RingBuffer<System, 256>,
@@ -126,7 +126,7 @@ impl DebuggerUi {
                 ColorImage::example(),
                 Default::default(),
             ),
-            pattern_texture: cc.egui_ctx.load_texture(
+            _pattern_texture: cc.egui_ctx.load_texture(
                 "Pattern Table",
                 ColorImage::example(),
                 Default::default(),
@@ -417,6 +417,18 @@ impl DebuggerUi {
                 "Audio Engine Buffer: {:}",
                 audio.audio_buffer.lock().unwrap().data.len()
             ));
+            ui.label(RichText::new("Pulse 0:").strong());
+            if emulator.cpu.bus.apu.status.pulse0_enable {
+                ui.label(emulator.cpu.bus.apu.pulse0.pretty_print());
+            } else {
+                ui.label("Disabled");
+            }
+            ui.label(RichText::new("Pulse 1:").strong());
+            if emulator.cpu.bus.apu.status.pulse1_enable {
+                ui.label(emulator.cpu.bus.apu.pulse1.pretty_print());
+            } else {
+                ui.label("Disabled");
+            }
         });
     }
 

@@ -297,7 +297,7 @@ impl eframe::App for EmulatorApp {
         self.save_persistent_data();
         self.update_keys(&ctx.input());
 
-        let cycles_before = self.emulator.cpu.cycle;
+        self.emulator.cpu.cycle;
         if !self.debug_mode {
             self.emulator
                 .execute_for_duration(ctx.input().stable_dt as f64)

@@ -85,7 +85,6 @@ impl AudioEngine {
             .expect("no output device available");
         let config = device.default_output_config().unwrap();
         let sample_rate = config.sample_rate();
-        println!("config: {:?}", config);
         let audio_buffer = Arc::new(Mutex::new(AudioBuffer {
             data: Vec::<f32>::with_capacity(16 * 512),
             starved: true,

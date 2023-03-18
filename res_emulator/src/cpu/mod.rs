@@ -72,6 +72,7 @@ pub struct ResCpuBus {
     pub joypad0: Joypad,
     pub joypad1: Joypad,
     pub debugger: Rc<RefCell<Debugger>>,
+    pub cycle: usize,
 }
 
 impl ResCpuBus {
@@ -85,6 +86,7 @@ impl ResCpuBus {
             cartridge,
             joypad0: Joypad::default(),
             joypad1: Joypad::default(),
+            cycle: 0,
         }
     }
 
@@ -98,6 +100,7 @@ impl CpuBus for ResCpuBus {
     fn advance_clock(&mut self, cpu_cycles: usize) -> Result<()> {
         self.apu.advance_clock(cpu_cycles)?;
         self.ppu.advance_clock(cpu_cycles * 3)?;
+        self.cycle += cpu_cycles;
         Ok(())
     }
 
@@ -124,7 +127,7 @@ impl CpuBus for ResCpuBus {
     fn read(&mut self, addr: u16) -> Result<u8> {
         self.debugger
             .borrow_mut()
-            .on_cpu_memory_access(MemoryAccess::Read(addr));
+            .on_cpu_memory_access(self.cycle, MemoryAccess::Read(addr));
         match addr {
             0x0000..=0x1FFF => Ok(self.ram[addr as usize & 0b0000_0111_1111_1111]),
             0x2000..=0x3FFF => Ok(self.ppu.cpu_bus_read(addr)?),
@@ -144,7 +147,7 @@ impl CpuBus for ResCpuBus {
     fn write(&mut self, addr: u16, value: u8) -> Result<()> {
         self.debugger
             .borrow_mut()
-            .on_cpu_memory_access(MemoryAccess::Write(addr, value));
+            .on_cpu_memory_access(self.cycle, MemoryAccess::Write(addr, value));
         match addr {
             0x0000..=0x1FFF => self.ram[addr as usize & 0b0000_0111_1111_1111] = value,
             0x2000..=0x3FFF => self.ppu.cpu_bus_write(addr, value)?,
