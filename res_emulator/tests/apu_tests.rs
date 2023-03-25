@@ -1,8 +1,10 @@
 use std::fs::File;
-use std::path::{Path, PathBuf};
-use wav::{self, BitDepth};
+use std::path::Path;
+use std::path::PathBuf;
 
 use res_emulator::apu::Apu;
+use wav::BitDepth;
+use wav::{self};
 
 static SAMPLE_RATE: usize = 44100;
 
