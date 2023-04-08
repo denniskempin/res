@@ -108,7 +108,7 @@ impl MemoryViewer {
 
 pub struct DebuggerUi {
     nametable_texture: TextureHandle,
-    _pattern_texture: TextureHandle,
+    pattern_texture: TextureHandle,
 
     command: Option<DebugCommand>,
     previous_states: RingBuffer<System, 256>,
@@ -126,7 +126,7 @@ impl DebuggerUi {
                 ColorImage::example(),
                 Default::default(),
             ),
-            _pattern_texture: cc.egui_ctx.load_texture(
+            pattern_texture: cc.egui_ctx.load_texture(
                 "Pattern Table",
                 ColorImage::example(),
                 Default::default(),
@@ -236,7 +236,7 @@ impl DebuggerUi {
                     .set(emulator.ppu().debug_render_nametable(), Default::default());
                 ui.image(&self.nametable_texture, vec2(400.0, 220.0));
             });
-            /*ui.vertical(|ui| {
+            ui.vertical(|ui| {
                 ui.label(RichText::new("Pattern Table").strong());
 
                 self.pattern_texture.set(
@@ -244,7 +244,7 @@ impl DebuggerUi {
                     Default::default(),
                 );
                 ui.image(&self.pattern_texture, vec2(400.0, 220.0));
-            });*/
+            });
 
             self.apu_panel(ui, emulator, audio);
             self.ppu_panel(ui, emulator);

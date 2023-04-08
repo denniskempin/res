@@ -1,5 +1,6 @@
 mod mmc1;
 mod nrom;
+mod uxrom;
 
 use std::fmt::Formatter;
 
@@ -12,6 +13,7 @@ use packed_struct::prelude::*;
 use thiserror::Error;
 
 use self::mmc1::Mmc1Mapper;
+use self::uxrom::UxRomMapper;
 
 #[derive(Error)]
 pub enum CartridgeError {
@@ -80,8 +82,9 @@ pub struct InesHeader {
 /// TODO: Consider using serde and https://github.com/dtolnay/typetag
 #[derive(Encode, Decode, Clone)]
 enum MapperEnum {
-    NromMapper(NromMapper),
-    Mmc1Mapper(Mmc1Mapper),
+    Nrom(NromMapper),
+    Mmc1(Mmc1Mapper),
+    UxRom(UxRomMapper),
 }
 
 #[derive(Encode, Decode, Clone)]
@@ -94,14 +97,13 @@ impl Cartridge {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
-            mapper: MapperEnum::NromMapper(NromMapper::default()),
+            mapper: MapperEnum::Nrom(NromMapper::default()),
             has_persistent_data: false,
         }
     }
 
     pub fn load_nrom_with_data(&mut self, prg: &[u8], chr: &[u8]) {
-        self.mapper =
-            MapperEnum::NromMapper(NromMapper::new(prg, chr, MirroringMode::Horizontal, None));
+        self.mapper = MapperEnum::Nrom(NromMapper::new(prg, chr, MirroringMode::Horizontal, None));
     }
 
     pub fn load_ines(&mut self, raw: &[u8], persistent_data: Option<&[u8]>) -> Result<()> {
@@ -137,7 +139,7 @@ impl Cartridge {
 
         match mapper_id {
             0 => {
-                self.mapper = MapperEnum::NromMapper(NromMapper::new(
+                self.mapper = MapperEnum::Nrom(NromMapper::new(
                     &raw[prg_start..prg_end],
                     &raw[prg_end..chr_end],
                     mirroring_mode,
@@ -145,9 +147,17 @@ impl Cartridge {
                 ))
             }
             1 => {
-                self.mapper = MapperEnum::Mmc1Mapper(Mmc1Mapper::new(
+                self.mapper = MapperEnum::Mmc1(Mmc1Mapper::new(
                     &raw[prg_start..prg_end],
                     &raw[prg_end..chr_end],
+                    persistent_data,
+                ))
+            }
+            2 => {
+                self.mapper = MapperEnum::UxRom(UxRomMapper::new(
+                    &raw[prg_start..prg_end],
+                    &raw[prg_end..chr_end],
+                    mirroring_mode,
                     persistent_data,
                 ))
             }
@@ -158,57 +168,65 @@ impl Cartridge {
 
     pub fn persistent_data(&self) -> Vec<u8> {
         match &self.mapper {
-            MapperEnum::NromMapper(mapper) => mapper.persistent_data(),
-            MapperEnum::Mmc1Mapper(mapper) => mapper.persistent_data(),
+            MapperEnum::Nrom(mapper) => mapper.persistent_data(),
+            MapperEnum::Mmc1(mapper) => mapper.persistent_data(),
+            MapperEnum::UxRom(mapper) => mapper.persistent_data(),
         }
     }
 
     pub fn get_mirroring_mode(&self) -> MirroringMode {
         match &self.mapper {
-            MapperEnum::NromMapper(mapper) => mapper.get_mirroring_mode(),
-            MapperEnum::Mmc1Mapper(mapper) => mapper.get_mirroring_mode(),
+            MapperEnum::Nrom(mapper) => mapper.get_mirroring_mode(),
+            MapperEnum::Mmc1(mapper) => mapper.get_mirroring_mode(),
+            MapperEnum::UxRom(mapper) => mapper.get_mirroring_mode(),
         }
     }
 
     pub fn cpu_bus_peek(&self, addr: u16) -> Option<u8> {
         match &self.mapper {
-            MapperEnum::NromMapper(mapper) => mapper.cpu_bus_peek(addr),
-            MapperEnum::Mmc1Mapper(mapper) => mapper.cpu_bus_peek(addr),
+            MapperEnum::Nrom(mapper) => mapper.cpu_bus_peek(addr),
+            MapperEnum::Mmc1(mapper) => mapper.cpu_bus_peek(addr),
+            MapperEnum::UxRom(mapper) => mapper.cpu_bus_peek(addr),
         }
     }
 
     pub fn cpu_bus_read(&mut self, addr: u16) -> CartridgeResult<u8> {
         match &mut self.mapper {
-            MapperEnum::NromMapper(mapper) => mapper.cpu_bus_read(addr),
-            MapperEnum::Mmc1Mapper(mapper) => mapper.cpu_bus_read(addr),
+            MapperEnum::Nrom(mapper) => mapper.cpu_bus_read(addr),
+            MapperEnum::Mmc1(mapper) => mapper.cpu_bus_read(addr),
+            MapperEnum::UxRom(mapper) => mapper.cpu_bus_read(addr),
         }
     }
 
     pub fn cpu_bus_write(&mut self, addr: u16, value: u8) -> CartridgeResult<()> {
         match &mut self.mapper {
-            MapperEnum::NromMapper(mapper) => mapper.cpu_bus_write(addr, value),
-            MapperEnum::Mmc1Mapper(mapper) => mapper.cpu_bus_write(addr, value),
+            MapperEnum::Nrom(mapper) => mapper.cpu_bus_write(addr, value),
+            MapperEnum::Mmc1(mapper) => mapper.cpu_bus_write(addr, value),
+            MapperEnum::UxRom(mapper) => mapper.cpu_bus_write(addr, value),
         }
     }
 
     pub fn ppu_bus_peek(&self, addr: u16) -> Option<u8> {
         match &self.mapper {
-            MapperEnum::NromMapper(mapper) => mapper.ppu_bus_peek(addr),
-            MapperEnum::Mmc1Mapper(mapper) => mapper.ppu_bus_peek(addr),
+            MapperEnum::Nrom(mapper) => mapper.ppu_bus_peek(addr),
+            MapperEnum::Mmc1(mapper) => mapper.ppu_bus_peek(addr),
+            MapperEnum::UxRom(mapper) => mapper.ppu_bus_peek(addr),
         }
     }
 
     pub fn ppu_bus_read(&mut self, addr: u16) -> CartridgeResult<u8> {
         match &mut self.mapper {
-            MapperEnum::NromMapper(mapper) => mapper.ppu_bus_read(addr),
-            MapperEnum::Mmc1Mapper(mapper) => mapper.ppu_bus_read(addr),
+            MapperEnum::Nrom(mapper) => mapper.ppu_bus_read(addr),
+            MapperEnum::Mmc1(mapper) => mapper.ppu_bus_read(addr),
+            MapperEnum::UxRom(mapper) => mapper.ppu_bus_read(addr),
         }
     }
 
     pub fn ppu_bus_write(&mut self, addr: u16, value: u8) -> CartridgeResult<()> {
         match &mut self.mapper {
-            MapperEnum::NromMapper(mapper) => mapper.ppu_bus_write(addr, value),
-            MapperEnum::Mmc1Mapper(mapper) => mapper.ppu_bus_write(addr, value),
+            MapperEnum::Nrom(mapper) => mapper.ppu_bus_write(addr, value),
+            MapperEnum::Mmc1(mapper) => mapper.ppu_bus_write(addr, value),
+            MapperEnum::UxRom(mapper) => mapper.ppu_bus_write(addr, value),
         }
     }
 }

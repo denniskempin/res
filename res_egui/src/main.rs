@@ -34,7 +34,7 @@ fn main() {
 
     let native_options = eframe::NativeOptions {
         drag_and_drop_support: true,
-        initial_window_size: Some(vec2(1400.0, 800.0)),
+        initial_window_size: Some(vec2(1600.0, 1000.0)),
         ..Default::default()
     };
 
