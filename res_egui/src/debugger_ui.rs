@@ -435,6 +435,12 @@ impl DebuggerUi {
             } else {
                 ui.label("Disabled");
             }
+            ui.label(RichText::new("Noise:").strong());
+            if emulator.cpu.bus.apu.status.noise_enable {
+                ui.label(emulator.cpu.bus.apu.noise.pretty_print());
+            } else {
+                ui.label("Disabled");
+            }
         });
     }
 

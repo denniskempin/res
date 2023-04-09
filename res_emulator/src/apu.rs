@@ -1,4 +1,5 @@
 mod frame_counter;
+mod noise;
 mod pulse;
 mod triangle;
 
@@ -8,6 +9,7 @@ use bincode::Encode;
 use packed_struct::prelude::PackedStruct;
 
 use self::frame_counter::FrameCounter;
+use self::noise::NoiseChannel;
 use self::pulse::PulseChannel;
 use self::triangle::TriangleChannel;
 
@@ -22,6 +24,7 @@ pub struct Apu {
     pub pulse0: PulseChannel,
     pub pulse1: PulseChannel,
     pub triangle: TriangleChannel,
+    pub noise: NoiseChannel,
 }
 
 #[derive(PackedStruct, Encode, Decode, Clone, Debug, Default, Copy, PartialEq, Eq)]
@@ -47,6 +50,7 @@ impl Apu {
             pulse0: PulseChannel::default(),
             pulse1: PulseChannel::default(),
             triangle: TriangleChannel::default(),
+            noise: NoiseChannel::default(),
         }
     }
 
@@ -69,6 +73,10 @@ impl Apu {
                     self.frame_counter.quarter_frame,
                 );
                 self.pulse1.tick(
+                    self.frame_counter.half_frame,
+                    self.frame_counter.quarter_frame,
+                );
+                self.noise.tick(
                     self.frame_counter.half_frame,
                     self.frame_counter.quarter_frame,
                 );
@@ -101,8 +109,12 @@ impl Apu {
         } else {
             0.0
         };
-
-        0.1128 * (pulse0 + pulse1) + 0.12765 * triangle
+        let noise = if self.status.noise_enable {
+            self.noise.value()
+        } else {
+            0.0
+        };
+        0.1128 * (pulse0 + pulse1) + 0.12765 * triangle + 0.0741 * noise
     }
 
     pub fn tick(&mut self) -> Result<()> {
@@ -124,6 +136,7 @@ impl Apu {
             0x4008..=0x400B => self
                 .triangle
                 .write_register((addr - 0x4008) as usize, value),
+            0x400C..=0x400F => self.noise.write_register((addr - 0x400C) as usize, value),
             0x4015 => self.status = StatusRegister::unpack(&[value]).unwrap(),
             0x4017 => self.frame_counter.write_register(value),
             _ => {}
