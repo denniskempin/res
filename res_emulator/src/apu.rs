@@ -1,5 +1,6 @@
 mod frame_counter;
 mod pulse;
+mod triangle;
 
 use anyhow::Result;
 use bincode::Decode;
@@ -8,6 +9,7 @@ use packed_struct::prelude::PackedStruct;
 
 use self::frame_counter::FrameCounter;
 use self::pulse::PulseChannel;
+use self::triangle::TriangleChannel;
 
 #[derive(Default, bincode::Encode, bincode::Decode, Clone)]
 pub struct Apu {
@@ -19,6 +21,7 @@ pub struct Apu {
     pub status: StatusRegister,
     pub pulse0: PulseChannel,
     pub pulse1: PulseChannel,
+    pub triangle: TriangleChannel,
 }
 
 #[derive(PackedStruct, Encode, Decode, Clone, Debug, Default, Copy, PartialEq, Eq)]
@@ -43,6 +46,7 @@ impl Apu {
             status: StatusRegister::default(),
             pulse0: PulseChannel::default(),
             pulse1: PulseChannel::default(),
+            triangle: TriangleChannel::default(),
         }
     }
 
@@ -54,6 +58,11 @@ impl Apu {
         for _ in 0..cycles {
             self.frame_counter.tick();
             self.cycle += 1;
+
+            self.triangle.tick(
+                self.frame_counter.half_frame,
+                self.frame_counter.quarter_frame,
+            );
             if self.cycle % 2 == 0 {
                 self.pulse0.tick(
                     self.frame_counter.half_frame,
@@ -64,6 +73,7 @@ impl Apu {
                     self.frame_counter.quarter_frame,
                 );
             }
+
             self.cycles_since_last_sample += 1.0;
 
             if self.cycles_since_last_sample > cycles_per_sample {
@@ -76,14 +86,23 @@ impl Apu {
     }
 
     pub fn sample(&self) -> f32 {
-        let mut value = 0.0;
-        if self.status.pulse0_enable {
-            value += self.pulse0.value() * 0.5
-        }
-        if self.status.pulse1_enable {
-            value += self.pulse1.value() * 0.5
-        }
-        value
+        let pulse0 = if self.status.pulse0_enable {
+            self.pulse0.value()
+        } else {
+            0.0
+        };
+        let pulse1 = if self.status.pulse1_enable {
+            self.pulse1.value()
+        } else {
+            0.0
+        };
+        let triangle = if self.status.triangle_enable {
+            self.triangle.value()
+        } else {
+            0.0
+        };
+
+        0.1128 * (pulse0 + pulse1) + 0.12765 * triangle
     }
 
     pub fn tick(&mut self) -> Result<()> {
@@ -102,6 +121,9 @@ impl Apu {
         match addr {
             0x4000..=0x4003 => self.pulse0.write_register((addr - 0x4000) as usize, value),
             0x4004..=0x4007 => self.pulse1.write_register((addr - 0x4004) as usize, value),
+            0x4008..=0x400B => self
+                .triangle
+                .write_register((addr - 0x4008) as usize, value),
             0x4015 => self.status = StatusRegister::unpack(&[value]).unwrap(),
             0x4017 => self.frame_counter.write_register(value),
             _ => {}

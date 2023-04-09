@@ -429,6 +429,12 @@ impl DebuggerUi {
             } else {
                 ui.label("Disabled");
             }
+            ui.label(RichText::new("Triangle:").strong());
+            if emulator.cpu.bus.apu.status.triangle_enable {
+                ui.label(emulator.cpu.bus.apu.triangle.pretty_print());
+            } else {
+                ui.label("Disabled");
+            }
         });
     }
 
