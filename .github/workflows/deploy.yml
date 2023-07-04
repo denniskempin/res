@@ -16,38 +16,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-
   deploy:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./res_egui
     steps:
       - name: Checkout
         uses: actions/checkout@v3
-        
+
       - name: Setup Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           target: wasm32-unknown-unknown
-      
+
       - name: Install wasm-pack
         run: cargo install wasm-pack
-      
+
       - name: Install yarn dependencies
         run: yarn install
-      
+
       - name: Build RES
         run: yarn build
-      
+
       - name: Setup Pages
         uses: actions/configure-pages@v2
-      
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v1
         with:
-          path: 'dist'
+          path: "dist"
 
       - name: Deploy to GitHub Pages
         id: deployment
