@@ -3,7 +3,7 @@ NES emulator written in Rust
 Runs as a native application, as a libretro core or on the [web](http://denniskempin.github.io/res/)
 with WASM.
 
-This is a just-for-fun side-project, there are plenty of other NES emulators
+This is an incomplete, just-for-fun, side-project, there are plenty of other NES emulators
 that are better in every aspect. 
 
 Resources for development:
